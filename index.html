@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>Stack it</title>
+<meta name="description" content="A private streak tracker for building good habits.">
+
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#D6451F">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Stack it">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<link rel="icon" href="icons/icon-192.png">
+
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ============ HOME SCREEN ============ -->
+<div id="homeScreen" class="screen">
+  <div class="app-shell">
+    <div class="topbar">
+      <h1>Stack it</h1>
+      <div class="topbar-actions">
+        <button class="icon-btn" id="overviewBtn">Overview</button>
+      </div>
+    </div>
+    <div id="totalStrip" class="total-strip hidden">
+      <span class="total-num" id="totalStreakNum">0</span>
+      <span class="total-label">combined active streak days</span>
+    </div>
+    <div id="habitList" class="habit-list"></div>
+    <div id="emptyState" class="empty-state hidden">
+      <p>Nothing stacked yet. Add the first habit you want to build &mdash; you can add more anytime.</p>
+      <button class="btn btn-primary" id="emptyAddBtn">Add a habit</button>
+    </div>
+  </div>
+  <button class="btn btn-primary fab" id="addHabitFab">+ Add habit</button>
+</div>
+
+<!-- ============ HABIT DETAIL SCREEN ============ -->
+<div id="detailScreen" class="screen hidden">
+  <div class="app-shell">
+    <div class="detail-header">
+      <button class="icon-btn" id="detailBackBtn">Back</button>
+      <button class="icon-btn" id="detailEditBtn">Edit</button>
+    </div>
+    <div class="detail-hero">
+      <div class="detail-hero-name" id="detailName"></div>
+      <div class="detail-hero-streak" id="detailStreakNum">0</div>
+      <div class="detail-hero-unit" id="detailStreakUnit">day streak</div>
+      <div class="detail-hero-since" id="detailSince"></div>
+    </div>
+    <div class="detail-stats">
+      <div class="detail-stat">
+        <div class="detail-stat-num" id="detailBest">0</div>
+        <div class="detail-stat-label">best streak (days)</div>
+      </div>
+      <div class="detail-stat">
+        <div class="detail-stat-num" id="detailTotalCount">0</div>
+        <div class="detail-stat-label">total days logged</div>
+      </div>
+    </div>
+    <div class="detail-actions">
+      <button class="btn btn-primary btn-block" id="markDoneBtn">Mark done today</button>
+    </div>
+    <div class="detail-section">
+      <h2>Last 90 days</h2>
+      <div class="heatmap" id="heatmap"></div>
+    </div>
+    <div class="detail-section">
+      <h2>History</h2>
+      <div id="historyList" class="history-list"></div>
+    </div>
+    <div class="detail-danger">
+      <button class="btn btn-block" id="archiveBtn">Archive habit</button>
+      <button class="btn btn-danger btn-block" id="deleteBtn">Delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ OVERVIEW SCREEN ============ -->
+<div id="overviewScreen" class="screen hidden">
+  <div class="app-shell">
+    <div class="detail-header">
+      <button class="icon-btn" id="overviewBackBtn">Back</button>
+    </div>
+    <div class="overview-total">
+      <div class="overview-total-num" id="overviewTotalNum">0</div>
+      <div class="overview-total-label">combined active streak days</div>
+    </div>
+    <div id="overviewList"></div>
+    <div class="detail-section">
+      <h2>Settings</h2>
+      <button class="settings-row" id="backupBtn">Backup &amp; restore</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ ADD/EDIT HABIT SHEET ============ -->
+<div id="habitSheet" class="sheet-backdrop hidden">
+  <div class="sheet">
+    <h2 id="habitSheetTitle">Add a habit</h2>
+    <div class="field">
+      <label for="habitNameInput">What are you building?</label>
+      <input type="text" id="habitNameInput" placeholder="e.g. exercise, reading, meditation" maxlength="40">
+    </div>
+    <div class="field">
+      <label>Icon (optional)</label>
+      <div class="icon-grid" id="iconGrid"></div>
+    </div>
+    <div class="sheet-actions">
+      <button class="btn" id="habitSheetCancel">Cancel</button>
+      <button class="btn btn-primary" id="habitSheetSave">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ CONFIRM SHEET (generic) ============ -->
+<div id="confirmSheet" class="sheet-backdrop hidden">
+  <div class="sheet">
+    <h2 id="confirmTitle">Are you sure?</h2>
+    <p class="confirm-text" id="confirmText"></p>
+    <div class="sheet-actions">
+      <button class="btn" id="confirmCancel">Cancel</button>
+      <button class="btn btn-danger" id="confirmOk">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ MILESTONE CELEBRATION ============ -->
+<div id="milestoneBackdrop" class="milestone-backdrop hidden">
+  <div class="milestone-card">
+    <div class="milestone-eyebrow" id="milestoneHabitName"></div>
+    <div class="milestone-title" id="milestoneTitle">1 week streak</div>
+    <div class="milestone-sub" id="milestoneSub">Keep it up. This one counts.</div>
+    <button class="btn btn-block" id="milestoneOkBtn">Keep going</button>
+  </div>
+</div>
+
+<!-- ============ BACKUP & RESTORE SHEET ============ -->
+<div id="backupSheet" class="sheet-backdrop hidden">
+  <div class="sheet">
+    <h2>Backup &amp; restore</h2>
+    <p class="confirm-text">Copy this text somewhere safe &mdash; Notes, a password manager, an email to yourself. If you update or reinstall the app, paste it back in below to restore everything: habits, streaks, and history.</p>
+    <div class="field">
+      <label for="backupExportArea">Your backup</label>
+      <textarea id="backupExportArea" class="backup-textarea" readonly rows="5"></textarea>
+    </div>
+    <button class="btn btn-block" id="backupCopyBtn">Copy to clipboard</button>
+    <div id="backupCopyStatus" class="backup-status"></div>
+
+    <div class="backup-divider"></div>
+
+    <div class="field">
+      <label for="backupImportArea">Restore from a backup</label>
+      <textarea id="backupImportArea" class="backup-textarea" rows="5" placeholder="Paste your backup text here"></textarea>
+    </div>
+    <div id="backupImportError" class="confirm-text" style="color:var(--danger); margin-bottom:0.5rem;"></div>
+    <div class="sheet-actions">
+      <button class="btn" id="backupCloseBtn">Close</button>
+      <button class="btn btn-danger" id="backupRestoreBtn">Restore</button>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
