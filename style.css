@@ -158,22 +158,6 @@ input, textarea, select { font-family: var(--sans); }
 
 #homeScreen .app-shell { padding-bottom: 5.5rem; }
 
-.total-strip {
-  padding: 1rem 1.25rem;
-  background: var(--surface);
-  border-bottom: var(--rule-w) solid var(--flame);
-  display: flex;
-  align-items: baseline;
-  gap: 0.6rem;
-}
-
-.total-strip .total-num {
-  font-family: var(--display);
-  font-weight: 700;
-  font-size: 1.5rem;
-}
-
-.total-strip .total-label { color: var(--ink-soft); font-size: 0.9rem; }
 
 .habit-list { display: flex; flex-direction: column; }
 
@@ -387,21 +371,6 @@ input, textarea, select { font-family: var(--sans); }
 
 /* ---------- Overview ---------- */
 
-.overview-total {
-  padding: 2rem 1.25rem;
-  background: var(--surface);
-  border-bottom: var(--rule-w) solid var(--flame);
-}
-
-.overview-total-num {
-  font-family: var(--display);
-  font-weight: 700;
-  font-size: 3.2rem;
-  line-height: 1;
-  font-variant-numeric: tabular-nums;
-}
-
-.overview-total-label { color: var(--ink-soft); margin-top: 0.4rem; }
 
 .overview-row {
   display: flex;

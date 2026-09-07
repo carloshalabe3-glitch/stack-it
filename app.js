@@ -274,17 +274,13 @@
     var list = activeHabits();
     var listEl = document.getElementById('habitList');
     var emptyEl = document.getElementById('emptyState');
-    var totalStrip = document.getElementById('totalStrip');
     listEl.innerHTML = '';
 
     if (list.length === 0) {
       emptyEl.classList.remove('hidden');
-      totalStrip.classList.add('hidden');
       return;
     }
     emptyEl.classList.add('hidden');
-    totalStrip.classList.remove('hidden');
-    document.getElementById('totalStreakNum').textContent = totalActiveStreakDays();
 
     list.forEach(function (habit) {
       var card = el('button', 'habit-card');
@@ -324,12 +320,6 @@
       listEl.appendChild(card);
       homeRefs[habit.id] = { numEl: numEl, unitEl: unitEl, bestEl: bestEl, doneBtn: doneBtn };
     });
-  }
-
-  function totalActiveStreakDays() {
-    var total = 0;
-    activeHabits().forEach(function (h) { total += currentStreak(h); });
-    return total;
   }
 
   // ---------- detail ----------
@@ -517,7 +507,6 @@
   // ---------- overview ----------
 
   function renderOverview() {
-    document.getElementById('overviewTotalNum').textContent = totalActiveStreakDays();
     var host = document.getElementById('overviewList');
     host.innerHTML = '';
 
