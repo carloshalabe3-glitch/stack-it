@@ -58,10 +58,14 @@
   // ---------- storage ----------
 
   function freshData() {
-    return { habits: [] };
+    return { habits: [], timeOff: [] };
   }
 
   var ALL_DAYS = [0, 1, 2, 3, 4, 5, 6];
+
+  function normalizeTimeOff(t) {
+    return { id: t.id || uid(), start: t.start, end: t.end, label: typeof t.label === 'string' ? t.label : '' };
+  }
 
   function normalizeHabit(h) {
     var scheduleDays = Array.isArray(h.scheduleDays) ? h.scheduleDays.filter(function (d) { return typeof d === 'number' && d >= 0 && d <= 6; }) : ALL_DAYS.slice();
@@ -73,9 +77,6 @@
       createdAt: typeof h.createdAt === 'number' ? h.createdAt : Date.now(),
       completedDates: Array.isArray(h.completedDates) ? h.completedDates.filter(function (d) { return typeof d === 'string'; }) : [],
       scheduleDays: scheduleDays,
-      timeOff: Array.isArray(h.timeOff) ? h.timeOff.filter(function (t) { return t && typeof t.start === 'string' && typeof t.end === 'string'; }).map(function (t) {
-        return { id: t.id || uid(), start: t.start, end: t.end, label: typeof t.label === 'string' ? t.label : '' };
-      }) : [],
       archived: !!h.archived,
       milestonesHit: Array.isArray(h.milestonesHit) ? h.milestonesHit : []
     };
@@ -84,7 +85,8 @@
   function normalizeData(parsed) {
     if (!parsed || typeof parsed !== 'object') return freshData();
     return {
-      habits: Array.isArray(parsed.habits) ? parsed.habits.map(normalizeHabit) : []
+      habits: Array.isArray(parsed.habits) ? parsed.habits.map(normalizeHabit) : [],
+      timeOff: Array.isArray(parsed.timeOff) ? parsed.timeOff.filter(function (t) { return t && typeof t.start === 'string' && typeof t.end === 'string'; }).map(normalizeTimeOff) : []
     };
   }
 
@@ -162,20 +164,21 @@
     return habit.completedDates.indexOf(todayKey()) !== -1;
   }
 
-  function isTimeOff(habit, key) {
-    for (var i = 0; i < habit.timeOff.length; i++) {
-      var t = habit.timeOff[i];
+  // Time off is app-wide: it applies to every habit, including ones added later.
+  function isTimeOff(key) {
+    for (var i = 0; i < data.timeOff.length; i++) {
+      var t = data.timeOff[i];
       if (key >= t.start && key <= t.end) return true;
     }
     return false;
   }
 
   // A day "counts" toward this habit's streak only if it's on the weekly
-  // schedule and not inside a time-off range. Days that don't count are
-  // transparently skipped — they neither break nor extend the streak.
+  // schedule and not inside an app-wide time-off range. Days that don't
+  // count are transparently skipped — they neither break nor extend the streak.
   function isRequired(habit, date, key) {
     if (habit.scheduleDays.indexOf(date.getDay()) === -1) return false;
-    if (isTimeOff(habit, key)) return false;
+    if (isTimeOff(key)) return false;
     return true;
   }
 
@@ -368,7 +371,7 @@
     document.getElementById('detailSince').textContent = cur === 0
       ? 'Streak reset — mark today to start a new one'
       : 'Since ' + formatDateShort(currentStreakStartKey(habit));
-    var isTodayRest = habit.scheduleDays.indexOf(new Date().getDay()) === -1 || isTimeOff(habit, todayKey());
+    var isTodayRest = habit.scheduleDays.indexOf(new Date().getDay()) === -1 || isTimeOff(todayKey());
     document.getElementById('detailSchedule').textContent = formatSchedule(habit) + (isTodayRest ? ' · today is a rest day' : '');
 
     document.getElementById('detailBest').textContent = bestStreak(habit);
@@ -382,7 +385,6 @@
 
     renderHeatmap(habit);
     renderHistory(habit);
-    renderTimeOffList(habit);
   }
 
   function currentStreakStartKey(habit) {
@@ -456,14 +458,14 @@
     });
   }
 
-  function renderTimeOffList(habit) {
+  function renderTimeOffList() {
     var host = document.getElementById('timeOffList');
     host.innerHTML = '';
-    if (habit.timeOff.length === 0) {
+    if (data.timeOff.length === 0) {
       host.appendChild(el('div', 'history-empty', 'No time off scheduled.'));
       return;
     }
-    var sorted = habit.timeOff.slice().sort(function (a, b) { return a.start < b.start ? -1 : 1; });
+    var sorted = data.timeOff.slice().sort(function (a, b) { return a.start < b.start ? -1 : 1; });
     sorted.forEach(function (t) {
       var row = el('div', 'timeoff-row');
       var left = el('span', '');
@@ -472,8 +474,8 @@
       row.appendChild(left);
       var rm = el('button', 'history-remove', 'Remove');
       rm.addEventListener('click', function () {
-        openConfirm('Remove this time off?', 'This habit will require completion again on those days going forward.', function () {
-          removeTimeOff(habit.id, t.id);
+        openConfirm('Remove this time off?', 'Every habit will require completion again on those days going forward.', function () {
+          removeTimeOff(t.id);
           closeConfirm();
         });
       });
@@ -482,20 +484,20 @@
     });
   }
 
-  function removeTimeOff(habitId, timeOffId) {
-    var habit = findHabit(habitId);
-    if (!habit) return;
-    habit.timeOff = habit.timeOff.filter(function (t) { return t.id !== timeOffId; });
+  function removeTimeOff(timeOffId) {
+    data.timeOff = data.timeOff.filter(function (t) { return t.id !== timeOffId; });
+    data.habits.forEach(resyncMilestonesHit);
     saveData();
-    renderDetail(habitId);
+    renderTimeOffList();
+    if (state.screen === 'detail' && detailRefs) renderDetail(detailRefs.habitId);
   }
 
   function openTimeOffSheet() {
     document.getElementById('timeOffLabel').value = '';
     document.getElementById('timeOffStart').value = '';
     document.getElementById('timeOffEnd').value = '';
-    document.getElementById('timeOffApplyAll').checked = false;
     document.getElementById('timeOffError').textContent = '';
+    renderTimeOffList();
     document.getElementById('timeOffSheet').classList.remove('hidden');
   }
 
@@ -508,7 +510,6 @@
     var label = document.getElementById('timeOffLabel').value.trim();
     var start = document.getElementById('timeOffStart').value;
     var end = document.getElementById('timeOffEnd').value;
-    var applyAll = document.getElementById('timeOffApplyAll').checked;
     if (!start || !end) {
       errEl.textContent = 'Pick a start and end date.';
       return;
@@ -518,15 +519,14 @@
       return;
     }
     errEl.textContent = '';
-    var targets = applyAll ? activeHabits() : [findHabit(state.currentHabitId)];
-    targets.forEach(function (habit) {
-      if (!habit) return;
-      habit.timeOff.push({ id: uid(), start: start, end: end, label: label });
-      resyncMilestonesHit(habit);
-    });
+    data.timeOff.push({ id: uid(), start: start, end: end, label: label });
+    data.habits.forEach(resyncMilestonesHit);
     saveData();
-    closeTimeOffSheet();
-    renderDetail(state.currentHabitId);
+    document.getElementById('timeOffLabel').value = '';
+    document.getElementById('timeOffStart').value = '';
+    document.getElementById('timeOffEnd').value = '';
+    renderTimeOffList();
+    if (state.screen === 'detail' && detailRefs) renderDetail(detailRefs.habitId);
   }
 
   // ---------- overview ----------
@@ -671,7 +671,6 @@
         createdAt: Date.now(),
         completedDates: [],
         scheduleDays: scheduleDays,
-        timeOff: [],
         archived: false,
         milestonesHit: []
       };
@@ -849,9 +848,6 @@
     document.getElementById('detailBackBtn').addEventListener('click', function () { goToScreen('home'); });
     document.getElementById('detailEditBtn').addEventListener('click', function () { openHabitSheet(state.currentHabitId); });
     document.getElementById('markDoneBtn').addEventListener('click', function () { toggleDoneToday(state.currentHabitId); });
-    document.getElementById('addTimeOffBtn').addEventListener('click', openTimeOffSheet);
-    document.getElementById('timeOffCancel').addEventListener('click', closeTimeOffSheet);
-    document.getElementById('timeOffSave').addEventListener('click', saveTimeOffSheet);
     document.getElementById('archiveBtn').addEventListener('click', function () {
       var habit = findHabit(state.currentHabitId);
       openConfirm('Archive this habit?', 'It will be hidden from your list but the history stays saved. You can restore it later from Overview.', function () {
@@ -871,6 +867,9 @@
     });
 
     document.getElementById('overviewBackBtn').addEventListener('click', function () { goToScreen('home'); });
+    document.getElementById('timeOffBtn').addEventListener('click', openTimeOffSheet);
+    document.getElementById('timeOffClose').addEventListener('click', closeTimeOffSheet);
+    document.getElementById('timeOffSave').addEventListener('click', saveTimeOffSheet);
     document.getElementById('backupBtn').addEventListener('click', openBackupSheet);
     document.getElementById('backupCloseBtn').addEventListener('click', closeBackupSheet);
     document.getElementById('backupCopyBtn').addEventListener('click', copyBackupText);

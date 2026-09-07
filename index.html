@@ -76,12 +76,6 @@
       <h2>History</h2>
       <div id="historyList" class="history-list"></div>
     </div>
-    <div class="detail-section">
-      <h2>Time off</h2>
-      <p class="confirm-text" style="margin-bottom:0.75rem;">Days in these ranges don't count against this habit's streak &mdash; use this for travel, holidays, or anything that makes the habit impossible for a while.</p>
-      <div id="timeOffList" class="history-list"></div>
-      <button class="btn btn-block" id="addTimeOffBtn" style="margin-top:0.75rem;">Add time off</button>
-    </div>
     <div class="detail-danger">
       <button class="btn btn-block" id="archiveBtn">Archive habit</button>
       <button class="btn btn-danger btn-block" id="deleteBtn">Delete</button>
@@ -98,6 +92,7 @@
     <div id="overviewList"></div>
     <div class="detail-section">
       <h2>Settings</h2>
+      <button class="settings-row" id="timeOffBtn">Time off</button>
       <button class="settings-row" id="backupBtn">Backup &amp; restore</button>
     </div>
   </div>
@@ -139,10 +134,13 @@
   </div>
 </div>
 
-<!-- ============ ADD TIME OFF SHEET ============ -->
+<!-- ============ TIME OFF SHEET ============ -->
 <div id="timeOffSheet" class="sheet-backdrop hidden">
   <div class="sheet">
-    <h2>Add time off</h2>
+    <h2>Time off</h2>
+    <p class="confirm-text">Days in these ranges don't count against any habit's streak &mdash; every habit skips them, including ones you add later. Use this for travel, holidays, or anything that makes every habit impossible for a while.</p>
+    <div id="timeOffList" class="history-list"></div>
+    <div class="backup-divider"></div>
     <div class="field">
       <label for="timeOffLabel">What's this for? (optional)</label>
       <input type="text" id="timeOffLabel" placeholder="e.g. Passover, trip to Mexico" maxlength="40">
@@ -155,13 +153,10 @@
       <label for="timeOffEnd">Through</label>
       <input type="date" id="timeOffEnd">
     </div>
-    <div class="field">
-      <label class="checkbox-label"><input type="checkbox" id="timeOffApplyAll"> Apply to all active habits</label>
-    </div>
     <div id="timeOffError" class="field-error"></div>
     <div class="sheet-actions">
-      <button class="btn" id="timeOffCancel">Cancel</button>
-      <button class="btn btn-primary" id="timeOffSave">Save</button>
+      <button class="btn" id="timeOffClose">Close</button>
+      <button class="btn btn-primary" id="timeOffSave">Add</button>
     </div>
   </div>
 </div>

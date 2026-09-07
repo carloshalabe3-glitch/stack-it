@@ -510,17 +510,6 @@ input, textarea, select { font-family: var(--sans); }
 
 .field-error { color: var(--danger); font-size: 0.85rem; margin: -0.3rem 0 0.5rem; }
 
-.checkbox-label {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 0.9rem;
-  color: var(--ink);
-  font-weight: 500;
-  cursor: pointer;
-}
-
-.checkbox-label input { width: 1.1rem; height: 1.1rem; accent-color: var(--flame); }
 
 .timeoff-row {
   display: flex;
