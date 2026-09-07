@@ -39,13 +39,21 @@
     return { habits: [] };
   }
 
+  var ALL_DAYS = [0, 1, 2, 3, 4, 5, 6];
+
   function normalizeHabit(h) {
+    var scheduleDays = Array.isArray(h.scheduleDays) ? h.scheduleDays.filter(function (d) { return typeof d === 'number' && d >= 0 && d <= 6; }) : ALL_DAYS.slice();
+    if (scheduleDays.length === 0) scheduleDays = ALL_DAYS.slice();
     return {
       id: h.id || uid(),
       name: h.name || 'Habit',
       icon: h.icon || '',
       createdAt: typeof h.createdAt === 'number' ? h.createdAt : Date.now(),
       completedDates: Array.isArray(h.completedDates) ? h.completedDates.filter(function (d) { return typeof d === 'string'; }) : [],
+      scheduleDays: scheduleDays,
+      timeOff: Array.isArray(h.timeOff) ? h.timeOff.filter(function (t) { return t && typeof t.start === 'string' && typeof t.end === 'string'; }).map(function (t) {
+        return { id: t.id || uid(), start: t.start, end: t.end, label: typeof t.label === 'string' ? t.label : '' };
+      }) : [],
       archived: !!h.archived,
       milestonesHit: Array.isArray(h.milestonesHit) ? h.milestonesHit : []
     };
@@ -93,12 +101,6 @@
 
   function todayKey() { return dateKey(new Date()); }
 
-  function yesterdayKey() {
-    var d = new Date();
-    d.setDate(d.getDate() - 1);
-    return dateKey(d);
-  }
-
   function el(tag, cls, text) {
     var e = document.createElement(tag);
     if (cls) e.className = cls;
@@ -138,39 +140,70 @@
     return habit.completedDates.indexOf(todayKey()) !== -1;
   }
 
+  function isTimeOff(habit, key) {
+    for (var i = 0; i < habit.timeOff.length; i++) {
+      var t = habit.timeOff[i];
+      if (key >= t.start && key <= t.end) return true;
+    }
+    return false;
+  }
+
+  // A day "counts" toward this habit's streak only if it's on the weekly
+  // schedule and not inside a time-off range. Days that don't count are
+  // transparently skipped — they neither break nor extend the streak.
+  function isRequired(habit, date, key) {
+    if (habit.scheduleDays.indexOf(date.getDay()) === -1) return false;
+    if (isTimeOff(habit, key)) return false;
+    return true;
+  }
+
   function currentStreak(habit) {
     var set = {};
     habit.completedDates.forEach(function (k) { set[k] = true; });
-    var startKey;
-    if (set[todayKey()]) startKey = todayKey();
-    else if (set[yesterdayKey()]) startKey = yesterdayKey();
-    else return 0;
-    var count = 0;
-    var cursor = parseDateKey(startKey);
-    while (set[dateKey(cursor)]) {
-      count++;
+    var floor = new Date(habit.createdAt);
+    floor.setHours(0, 0, 0, 0);
+    var today = todayKey();
+    var cursor = new Date();
+    cursor.setHours(0, 0, 0, 0);
+    var streak = 0;
+    while (cursor >= floor) {
+      var key = dateKey(cursor);
+      if (isRequired(habit, cursor, key)) {
+        if (set[key]) {
+          streak++;
+        } else if (key !== today) {
+          break;
+        }
+        // if it's today and not yet done, give grace: don't count, don't break, keep looking back
+      }
       cursor.setDate(cursor.getDate() - 1);
     }
-    return count;
+    return streak;
   }
 
   function bestStreak(habit) {
-    var dates = habit.completedDates.slice().sort();
-    if (!dates.length) return currentStreak(habit);
-    var best = 1;
-    var run = 1;
-    for (var i = 1; i < dates.length; i++) {
-      var prev = parseDateKey(dates[i - 1]);
-      var cur = parseDateKey(dates[i]);
-      var diffDays = Math.round((cur - prev) / 86400000);
-      if (diffDays === 1) {
-        run++;
-      } else if (diffDays !== 0) {
-        run = 1;
+    var set = {};
+    habit.completedDates.forEach(function (k) { set[k] = true; });
+    var cursor = new Date(habit.createdAt);
+    cursor.setHours(0, 0, 0, 0);
+    var end = new Date();
+    end.setHours(0, 0, 0, 0);
+    var today = todayKey();
+    var best = 0;
+    var run = 0;
+    while (cursor <= end) {
+      var key = dateKey(cursor);
+      if (isRequired(habit, cursor, key)) {
+        if (set[key]) {
+          run++;
+          if (run > best) best = run;
+        } else if (key !== today) {
+          run = 0;
+        }
       }
-      if (run > best) best = run;
+      cursor.setDate(cursor.getDate() + 1);
     }
-    return Math.max(best, currentStreak(habit));
+    return best;
   }
 
   function formatDateShort(key) {
@@ -191,6 +224,19 @@
     return years === 1 ? '1 year ago' : years + ' years ago';
   }
 
+  var DAY_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+  var DAY_NAMES_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+  function formatSchedule(habit) {
+    var days = habit.scheduleDays.slice().sort();
+    if (days.length === 7) return 'Every day';
+    var weekdays = [1, 2, 3, 4, 5];
+    var weekends = [0, 6];
+    if (days.length === 5 && weekdays.every(function (d) { return days.indexOf(d) !== -1; })) return 'Weekdays';
+    if (days.length === 2 && weekends.every(function (d) { return days.indexOf(d) !== -1; })) return 'Weekends';
+    return days.map(function (d) { return DAY_NAMES_SHORT[d]; }).join(', ');
+  }
+
   // ---------- app state ----------
 
   var state = {
@@ -198,6 +244,7 @@
     currentHabitId: null,
     editingHabitId: null,
     selectedIcon: '',
+    selectedDays: ALL_DAYS.slice(),
     confirmCallback: null,
     milestoneQueue: []
   };
@@ -305,7 +352,9 @@
     document.getElementById('detailStreakUnit').textContent = 'day streak';
     document.getElementById('detailSince').textContent = cur === 0
       ? 'Streak reset — mark today to start a new one'
-      : 'Since ' + formatDateShort(dateKey(new Date(new Date().setDate(new Date().getDate() - (cur - 1)))));
+      : 'Since ' + formatDateShort(currentStreakStartKey(habit));
+    var isTodayRest = habit.scheduleDays.indexOf(new Date().getDay()) === -1 || isTimeOff(habit, todayKey());
+    document.getElementById('detailSchedule').textContent = formatSchedule(habit) + (isTodayRest ? ' · today is a rest day' : '');
 
     document.getElementById('detailBest').textContent = bestStreak(habit);
     document.getElementById('detailTotalCount').textContent = habit.completedDates.length;
@@ -318,6 +367,30 @@
 
     renderHeatmap(habit);
     renderHistory(habit);
+    renderTimeOffList(habit);
+  }
+
+  function currentStreakStartKey(habit) {
+    var set = {};
+    habit.completedDates.forEach(function (k) { set[k] = true; });
+    var floor = new Date(habit.createdAt);
+    floor.setHours(0, 0, 0, 0);
+    var today = todayKey();
+    var cursor = new Date();
+    cursor.setHours(0, 0, 0, 0);
+    var lastKey = today;
+    while (cursor >= floor) {
+      var key = dateKey(cursor);
+      if (isRequired(habit, cursor, key)) {
+        if (set[key]) {
+          lastKey = key;
+        } else if (key !== today) {
+          break;
+        }
+      }
+      cursor.setDate(cursor.getDate() - 1);
+    }
+    return lastKey;
   }
 
   function renderHeatmap(habit) {
@@ -329,11 +402,15 @@
     for (var i = 89; i >= 0; i--) {
       var d = new Date(today);
       d.setDate(d.getDate() - i);
+      var key = dateKey(d);
       var cell = el('div', 'heat-cell');
+      var isDone = !!done[key];
       if (d.getTime() < new Date(habit.createdAt).setHours(0, 0, 0, 0)) {
         cell.style.opacity = '0.35';
+      } else if (!isDone && !isRequired(habit, d, key)) {
+        cell.style.opacity = '0.4';
       }
-      if (done[dateKey(d)]) cell.setAttribute('data-done', '1');
+      if (isDone) cell.setAttribute('data-done', '1');
       host.appendChild(cell);
     }
   }
@@ -362,6 +439,79 @@
       row.appendChild(rm);
       host.appendChild(row);
     });
+  }
+
+  function renderTimeOffList(habit) {
+    var host = document.getElementById('timeOffList');
+    host.innerHTML = '';
+    if (habit.timeOff.length === 0) {
+      host.appendChild(el('div', 'history-empty', 'No time off scheduled.'));
+      return;
+    }
+    var sorted = habit.timeOff.slice().sort(function (a, b) { return a.start < b.start ? -1 : 1; });
+    sorted.forEach(function (t) {
+      var row = el('div', 'timeoff-row');
+      var left = el('span', '');
+      left.appendChild(el('span', 'timeoff-label', (t.label || 'Time off') + ' '));
+      left.appendChild(el('span', 'timeoff-range', formatDateShort(t.start) + ' – ' + formatDateShort(t.end)));
+      row.appendChild(left);
+      var rm = el('button', 'history-remove', 'Remove');
+      rm.addEventListener('click', function () {
+        openConfirm('Remove this time off?', 'This habit will require completion again on those days going forward.', function () {
+          removeTimeOff(habit.id, t.id);
+          closeConfirm();
+        });
+      });
+      row.appendChild(rm);
+      host.appendChild(row);
+    });
+  }
+
+  function removeTimeOff(habitId, timeOffId) {
+    var habit = findHabit(habitId);
+    if (!habit) return;
+    habit.timeOff = habit.timeOff.filter(function (t) { return t.id !== timeOffId; });
+    saveData();
+    renderDetail(habitId);
+  }
+
+  function openTimeOffSheet() {
+    document.getElementById('timeOffLabel').value = '';
+    document.getElementById('timeOffStart').value = '';
+    document.getElementById('timeOffEnd').value = '';
+    document.getElementById('timeOffApplyAll').checked = false;
+    document.getElementById('timeOffError').textContent = '';
+    document.getElementById('timeOffSheet').classList.remove('hidden');
+  }
+
+  function closeTimeOffSheet() {
+    document.getElementById('timeOffSheet').classList.add('hidden');
+  }
+
+  function saveTimeOffSheet() {
+    var errEl = document.getElementById('timeOffError');
+    var label = document.getElementById('timeOffLabel').value.trim();
+    var start = document.getElementById('timeOffStart').value;
+    var end = document.getElementById('timeOffEnd').value;
+    var applyAll = document.getElementById('timeOffApplyAll').checked;
+    if (!start || !end) {
+      errEl.textContent = 'Pick a start and end date.';
+      return;
+    }
+    if (end < start) {
+      errEl.textContent = 'The end date needs to be on or after the start date.';
+      return;
+    }
+    errEl.textContent = '';
+    var targets = applyAll ? activeHabits() : [findHabit(state.currentHabitId)];
+    targets.forEach(function (habit) {
+      if (!habit) return;
+      habit.timeOff.push({ id: uid(), start: start, end: end, label: label });
+      resyncMilestonesHit(habit);
+    });
+    saveData();
+    closeTimeOffSheet();
+    renderDetail(state.currentHabitId);
   }
 
   // ---------- overview ----------
@@ -431,7 +581,10 @@
     document.getElementById('habitSheetTitle').textContent = habit ? 'Edit habit' : 'Add a habit';
     document.getElementById('habitNameInput').value = habit ? habit.name : '';
     state.selectedIcon = habit ? (habit.icon || '') : '';
+    state.selectedDays = habit ? habit.scheduleDays.slice() : ALL_DAYS.slice();
     renderIconGrid();
+    renderDayGrid();
+    document.getElementById('dayGridError').textContent = '';
     document.getElementById('habitSheet').classList.remove('hidden');
     setTimeout(function () { document.getElementById('habitNameInput').focus(); }, 50);
   }
@@ -459,16 +612,40 @@
     });
   }
 
+  function renderDayGrid() {
+    var grid = document.getElementById('dayGrid');
+    grid.innerHTML = '';
+    DAY_LABELS.forEach(function (label, idx) {
+      var opt = el('button', 'day-opt', label);
+      opt.type = 'button';
+      if (state.selectedDays.indexOf(idx) !== -1) opt.classList.add('selected');
+      opt.addEventListener('click', function () {
+        var pos = state.selectedDays.indexOf(idx);
+        if (pos === -1) state.selectedDays.push(idx);
+        else state.selectedDays.splice(pos, 1);
+        renderDayGrid();
+      });
+      grid.appendChild(opt);
+    });
+  }
+
   function saveHabitSheet() {
     var name = document.getElementById('habitNameInput').value.trim();
     if (!name) {
       document.getElementById('habitNameInput').focus();
       return;
     }
+    if (state.selectedDays.length === 0) {
+      document.getElementById('dayGridError').textContent = 'Pick at least one day.';
+      return;
+    }
+    document.getElementById('dayGridError').textContent = '';
+    var scheduleDays = state.selectedDays.slice();
     if (state.editingHabitId) {
       var habit = findHabit(state.editingHabitId);
       habit.name = name;
       habit.icon = state.selectedIcon;
+      habit.scheduleDays = scheduleDays;
       saveData();
       closeHabitSheet();
       goToScreen('detail', habit.id);
@@ -479,6 +656,8 @@
         icon: state.selectedIcon,
         createdAt: Date.now(),
         completedDates: [],
+        scheduleDays: scheduleDays,
+        timeOff: [],
         archived: false,
         milestonesHit: []
       };
@@ -656,6 +835,9 @@
     document.getElementById('detailBackBtn').addEventListener('click', function () { goToScreen('home'); });
     document.getElementById('detailEditBtn').addEventListener('click', function () { openHabitSheet(state.currentHabitId); });
     document.getElementById('markDoneBtn').addEventListener('click', function () { toggleDoneToday(state.currentHabitId); });
+    document.getElementById('addTimeOffBtn').addEventListener('click', openTimeOffSheet);
+    document.getElementById('timeOffCancel').addEventListener('click', closeTimeOffSheet);
+    document.getElementById('timeOffSave').addEventListener('click', saveTimeOffSheet);
     document.getElementById('archiveBtn').addEventListener('click', function () {
       var habit = findHabit(state.currentHabitId);
       openConfirm('Archive this habit?', 'It will be hidden from your list but the history stays saved. You can restore it later from Overview.', function () {
