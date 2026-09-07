@@ -263,6 +263,40 @@ input, textarea, select { font-family: var(--sans); }
   color: var(--flame-deep);
 }
 
+/* ---------- Grid view ---------- */
+
+.habit-list.grid-mode {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+
+.habit-list.grid-mode .habit-card {
+  padding: 0.95rem 0.85rem;
+  border-right: 1px solid #E9E2DC;
+}
+
+.habit-list.grid-mode .habit-card:nth-child(2n) { border-right: none; }
+
+.habit-list.grid-mode .habit-card-top {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.3rem;
+  margin-bottom: 0.5rem;
+}
+
+.habit-list.grid-mode .habit-name-row { font-size: 0.85rem; }
+.habit-list.grid-mode .habit-best { font-size: 0.68rem; }
+
+.habit-list.grid-mode .habit-card-bottom {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.5rem;
+}
+
+.habit-list.grid-mode .habit-streak-num { font-size: 1.8rem; }
+.habit-list.grid-mode .habit-streak-unit { font-size: 0.72rem; }
+.habit-list.grid-mode .mark-done-btn { width: 100%; text-align: center; }
+
 .empty-state { padding: 3rem 1.5rem; text-align: center; }
 
 .empty-state p {

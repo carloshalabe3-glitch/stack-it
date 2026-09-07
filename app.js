@@ -58,7 +58,7 @@
   // ---------- storage ----------
 
   function freshData() {
-    return { habits: [], timeOff: [] };
+    return { habits: [], timeOff: [], viewMode: 'list' };
   }
 
   var ALL_DAYS = [0, 1, 2, 3, 4, 5, 6];
@@ -99,7 +99,8 @@
     }
     return {
       habits: Array.isArray(parsed.habits) ? parsed.habits.map(normalizeHabit) : [],
-      timeOff: timeOff
+      timeOff: timeOff,
+      viewMode: parsed.viewMode === 'grid' ? 'grid' : 'list'
     };
   }
 
@@ -316,6 +317,8 @@
     var listEl = document.getElementById('habitList');
     var emptyEl = document.getElementById('emptyState');
     listEl.innerHTML = '';
+    listEl.classList.toggle('grid-mode', data.viewMode === 'grid');
+    document.getElementById('viewToggleBtn').textContent = data.viewMode === 'grid' ? 'List' : 'Grid';
 
     if (list.length === 0) {
       emptyEl.classList.remove('hidden');
@@ -857,6 +860,11 @@
     document.getElementById('addHabitFab').addEventListener('click', function () { openHabitSheet(null); });
     document.getElementById('emptyAddBtn').addEventListener('click', function () { openHabitSheet(null); });
     document.getElementById('overviewBtn').addEventListener('click', function () { goToScreen('overview'); });
+    document.getElementById('viewToggleBtn').addEventListener('click', function () {
+      data.viewMode = data.viewMode === 'grid' ? 'list' : 'grid';
+      saveData();
+      renderHome();
+    });
 
     document.getElementById('detailBackBtn').addEventListener('click', function () { goToScreen('home'); });
     document.getElementById('detailEditBtn').addEventListener('click', function () { openHabitSheet(state.currentHabitId); });
