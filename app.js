@@ -84,9 +84,22 @@
 
   function normalizeData(parsed) {
     if (!parsed || typeof parsed !== 'object') return freshData();
+    var timeOff = Array.isArray(parsed.timeOff) ? parsed.timeOff.filter(function (t) { return t && typeof t.start === 'string' && typeof t.end === 'string'; }).map(normalizeTimeOff) : [];
+    // Migration: older versions stored time off per habit. Fold any of that
+    // into the new app-wide list (deduped) so nothing gets lost.
+    if (Array.isArray(parsed.habits)) {
+      parsed.habits.forEach(function (h) {
+        if (!Array.isArray(h.timeOff)) return;
+        h.timeOff.forEach(function (t) {
+          if (!t || typeof t.start !== 'string' || typeof t.end !== 'string') return;
+          var dup = timeOff.some(function (existing) { return existing.start === t.start && existing.end === t.end && existing.label === (t.label || ''); });
+          if (!dup) timeOff.push(normalizeTimeOff(t));
+        });
+      });
+    }
     return {
       habits: Array.isArray(parsed.habits) ? parsed.habits.map(normalizeHabit) : [],
-      timeOff: Array.isArray(parsed.timeOff) ? parsed.timeOff.filter(function (t) { return t && typeof t.start === 'string' && typeof t.end === 'string'; }).map(normalizeTimeOff) : []
+      timeOff: timeOff
     };
   }
 
