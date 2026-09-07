@@ -25,6 +25,7 @@
     <div class="topbar">
       <h1>Stack it</h1>
       <div class="topbar-actions">
+        <button class="icon-btn" id="dayFilterBtn">All</button>
         <button class="icon-btn" id="viewToggleBtn">Grid</button>
         <button class="icon-btn" id="overviewBtn">Overview</button>
       </div>
@@ -35,7 +36,7 @@
     </div>
     <div id="habitList" class="habit-list"></div>
     <div id="emptyState" class="empty-state hidden">
-      <p>Nothing stacked yet. Add the first habit you want to build &mdash; you can add more anytime.</p>
+      <p id="emptyStateText">Nothing stacked yet. Add the first habit you want to build &mdash; you can add more anytime.</p>
       <button class="btn btn-primary" id="emptyAddBtn">Add a habit</button>
     </div>
   </div>

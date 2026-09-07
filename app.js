@@ -58,7 +58,7 @@
   // ---------- storage ----------
 
   function freshData() {
-    return { habits: [], timeOff: [], viewMode: 'list' };
+    return { habits: [], timeOff: [], viewMode: 'list', dayFilter: 'today' };
   }
 
   var ALL_DAYS = [0, 1, 2, 3, 4, 5, 6];
@@ -100,7 +100,8 @@
     return {
       habits: Array.isArray(parsed.habits) ? parsed.habits.map(normalizeHabit) : [],
       timeOff: timeOff,
-      viewMode: parsed.viewMode === 'grid' ? 'grid' : 'list'
+      viewMode: parsed.viewMode === 'grid' ? 'grid' : 'list',
+      dayFilter: parsed.dayFilter === 'all' ? 'all' : 'today'
     };
   }
 
@@ -194,6 +195,14 @@
     if (habit.scheduleDays.indexOf(date.getDay()) === -1) return false;
     if (isTimeOff(key)) return false;
     return true;
+  }
+
+  // Home shows only what's actually on today's schedule — habits resting
+  // today (by weekly schedule or time off) are hidden there, not just faded.
+  function todaysHabits() {
+    var today = new Date();
+    var key = todayKey();
+    return activeHabits().filter(function (h) { return isRequired(h, today, key); });
   }
 
   function currentStreak(habit) {
@@ -313,14 +322,25 @@
     var quote = todaysQuote();
     document.getElementById('quoteText').textContent = '“' + quote.text + '”';
     document.getElementById('quoteAuthor').textContent = '— ' + quote.author;
-    var list = activeHabits();
+    var all = activeHabits();
+    var list = data.dayFilter === 'all' ? all : todaysHabits();
     var listEl = document.getElementById('habitList');
     var emptyEl = document.getElementById('emptyState');
     listEl.innerHTML = '';
     listEl.classList.toggle('grid-mode', data.viewMode === 'grid');
     document.getElementById('viewToggleBtn').textContent = data.viewMode === 'grid' ? 'List' : 'Grid';
+    document.getElementById('dayFilterBtn').textContent = data.dayFilter === 'all' ? 'Today' : 'All';
 
     if (list.length === 0) {
+      var emptyText = document.getElementById('emptyStateText');
+      var addBtn = document.getElementById('emptyAddBtn');
+      if (all.length === 0) {
+        emptyText.textContent = 'Nothing stacked yet. Add the first habit you want to build — you can add more anytime.';
+        addBtn.classList.remove('hidden');
+      } else {
+        emptyText.textContent = "Nothing scheduled for today. Tap “All” above to see everything you're building.";
+        addBtn.classList.add('hidden');
+      }
       emptyEl.classList.remove('hidden');
       return;
     }
@@ -862,6 +882,11 @@
     document.getElementById('overviewBtn').addEventListener('click', function () { goToScreen('overview'); });
     document.getElementById('viewToggleBtn').addEventListener('click', function () {
       data.viewMode = data.viewMode === 'grid' ? 'list' : 'grid';
+      saveData();
+      renderHome();
+    });
+    document.getElementById('dayFilterBtn').addEventListener('click', function () {
+      data.dayFilter = data.dayFilter === 'all' ? 'today' : 'all';
       saveData();
       renderHome();
     });
