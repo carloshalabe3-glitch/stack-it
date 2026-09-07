@@ -158,6 +158,27 @@ input, textarea, select { font-family: var(--sans); }
 
 #homeScreen .app-shell { padding-bottom: 5.5rem; }
 
+.quote-strip {
+  padding: 1.1rem 1.25rem;
+  background: var(--surface);
+  border-bottom: var(--rule-w) solid var(--flame);
+}
+
+.quote-text {
+  font-family: var(--display);
+  font-style: italic;
+  font-weight: 500;
+  font-size: 1.05rem;
+  line-height: 1.4;
+  margin: 0 0 0.4rem;
+}
+
+.quote-author {
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+  margin: 0;
+}
+
 
 .habit-list { display: flex; flex-direction: column; }
 

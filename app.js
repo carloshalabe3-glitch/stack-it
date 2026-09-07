@@ -33,6 +33,28 @@
     { key: '1y', days: 365, title: '1 year streak' }
   ];
 
+  var QUOTES = [
+    { text: 'We are what we repeatedly do. Excellence, then, is not an act, but a habit.', author: 'Will Durant' },
+    { text: "You don't have to be great to start, but you have to start to be great.", author: 'Zig Ziglar' },
+    { text: 'Motivation is what gets you started. Habit is what keeps you going.', author: 'Jim Ryun' },
+    { text: 'We first make our habits, and then our habits make us.', author: 'John Dryden' },
+    { text: 'Success is the sum of small efforts, repeated day in and day out.', author: 'Robert Collier' },
+    { text: 'The best time to plant a tree was 20 years ago. The second best time is now.', author: 'Chinese proverb' },
+    { text: 'Amateurs sit and wait for inspiration, the rest of us just get up and go to work.', author: 'Stephen King' },
+    { text: 'Discipline is the bridge between goals and accomplishment.', author: 'Jim Rohn' },
+    { text: "It's not what we do once in a while that shapes our lives, but what we do consistently.", author: 'Tony Robbins' },
+    { text: 'The chains of habit are too weak to be felt until they are too strong to be broken.', author: 'Samuel Johnson' },
+    { text: 'Every action you take is a vote for the type of person you wish to become.', author: 'James Clear' },
+    { text: 'Habits are the compound interest of self-improvement.', author: 'James Clear' }
+  ];
+
+  function todaysQuote() {
+    var now = new Date();
+    var start = new Date(now.getFullYear(), 0, 0);
+    var dayOfYear = Math.floor((now - start) / 86400000);
+    return QUOTES[dayOfYear % QUOTES.length];
+  }
+
   // ---------- storage ----------
 
   function freshData() {
@@ -271,6 +293,9 @@
 
   function renderHome() {
     homeRefs = {};
+    var quote = todaysQuote();
+    document.getElementById('quoteText').textContent = '“' + quote.text + '”';
+    document.getElementById('quoteAuthor').textContent = '— ' + quote.author;
     var list = activeHabits();
     var listEl = document.getElementById('habitList');
     var emptyEl = document.getElementById('emptyState');
