@@ -474,6 +474,55 @@ input, textarea, select { font-family: var(--sans); }
 
 .history-empty { color: var(--ink-soft); font-size: 0.9rem; }
 
+.hero-edit-link {
+  display: block;
+  margin-top: 0.6rem;
+  background: none;
+  border: none;
+  padding: 0.3rem 0 0;
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.activity-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid #F0EAE5;
+}
+
+.activity-row span { font-size: 0.95rem; }
+
+.activity-remove {
+  background: none;
+  border: none;
+  color: var(--danger);
+  font-size: 0.85rem;
+  padding: 0.3rem 0.5rem;
+}
+
+.add-activity-row {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.add-activity-row input {
+  flex: 1;
+  border: none;
+  border-bottom: 2px solid var(--ink);
+  background: transparent;
+  font-size: 0.95rem;
+  padding: 0.5rem 0.1rem;
+}
+
+.add-activity-row input:focus { outline: none; border-color: var(--flame); }
+
+.add-milestone-row input[type="number"] { flex: 0 0 4rem; }
+
 
 .detail-danger { padding: 1.25rem; display: flex; gap: 0.75rem; }
 .detail-danger .btn { flex: 1; font-size: 0.9rem; padding: 0.7rem 0.5rem; }

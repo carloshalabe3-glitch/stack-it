@@ -67,6 +67,10 @@
     return { id: t.id || uid(), start: t.start, end: t.end, label: typeof t.label === 'string' ? t.label : '' };
   }
 
+  function normalizeCustomMilestone(m) {
+    return { id: m.id || uid(), days: m.days, label: typeof m.label === 'string' ? m.label : '' };
+  }
+
   function normalizeHabit(h) {
     var scheduleDays = Array.isArray(h.scheduleDays) ? h.scheduleDays.filter(function (d) { return typeof d === 'number' && d >= 0 && d <= 6; }) : ALL_DAYS.slice();
     if (scheduleDays.length === 0) scheduleDays = ALL_DAYS.slice();
@@ -78,8 +82,19 @@
       completedDates: Array.isArray(h.completedDates) ? h.completedDates.filter(function (d) { return typeof d === 'string'; }) : [],
       scheduleDays: scheduleDays,
       archived: !!h.archived,
-      milestonesHit: Array.isArray(h.milestonesHit) ? h.milestonesHit : []
+      milestonesHit: Array.isArray(h.milestonesHit) ? h.milestonesHit : [],
+      customMilestones: Array.isArray(h.customMilestones) ? h.customMilestones.filter(function (m) { return m && typeof m.days === 'number' && m.days > 0; }).map(normalizeCustomMilestone) : []
     };
+  }
+
+  function milestoneDefaultTitle(days) {
+    return (days === 1 ? '1 day streak' : days + ' day streak');
+  }
+
+  function habitMilestones(habit) {
+    return MILESTONES.concat(habit.customMilestones.map(function (m) {
+      return { key: 'custom_' + m.id, days: m.days, title: m.label || milestoneDefaultTitle(m.days) };
+    }));
   }
 
   function normalizeData(parsed) {
@@ -425,6 +440,51 @@
 
     renderCalendar(habit);
     renderHistory(habit);
+    renderMilestoneList(habit);
+  }
+
+  function renderMilestoneList(habit) {
+    var host = document.getElementById('milestoneListEl');
+    host.innerHTML = '';
+    if (habit.customMilestones.length === 0) {
+      host.appendChild(el('div', 'history-empty', 'No custom milestones yet.'));
+      return;
+    }
+    var sorted = habit.customMilestones.slice().sort(function (a, b) { return a.days - b.days; });
+    sorted.forEach(function (m) {
+      var row = el('div', 'activity-row');
+      row.appendChild(el('span', '', (m.label || milestoneDefaultTitle(m.days)) + ' — ' + m.days + 'd'));
+      var rm = el('button', 'activity-remove', 'Remove');
+      rm.addEventListener('click', function () {
+        openConfirm('Remove this milestone?', 'This just removes the custom target — it won’t affect your streak or history.', function () {
+          habit.customMilestones = habit.customMilestones.filter(function (x) { return x.id !== m.id; });
+          resyncMilestonesHit(habit);
+          saveData();
+          closeConfirm();
+          renderMilestoneList(habit);
+        });
+      });
+      row.appendChild(rm);
+      host.appendChild(row);
+    });
+  }
+
+  function addCustomMilestone(habitId) {
+    var habit = findHabit(habitId);
+    if (!habit) return;
+    var daysInput = document.getElementById('newMilestoneDaysInput');
+    var labelInput = document.getElementById('newMilestoneLabelInput');
+    var days = parseInt(daysInput.value, 10);
+    if (!days || days < 1) {
+      daysInput.focus();
+      return;
+    }
+    habit.customMilestones.push({ id: uid(), days: days, label: labelInput.value.trim() });
+    resyncMilestonesHit(habit);
+    saveData();
+    daysInput.value = '';
+    labelInput.value = '';
+    renderMilestoneList(habit);
   }
 
   function renderCalendar(habit) {
@@ -735,7 +795,8 @@
         completedDates: [],
         scheduleDays: scheduleDays,
         archived: false,
-        milestonesHit: []
+        milestonesHit: [],
+        customMilestones: []
       };
       data.habits.push(newHabit);
       saveData();
@@ -744,11 +805,69 @@
     }
   }
 
+  // ---------- shareable streak card ----------
+
+  function drawStreakCard(habit) {
+    var size = 1080;
+    var canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    var ctx = canvas.getContext('2d');
+
+    ctx.fillStyle = '#D6451F';
+    ctx.fillRect(0, 0, size, size);
+
+    ctx.fillStyle = '#FFFFFF';
+    ctx.textAlign = 'center';
+
+    ctx.font = '600 34px "Work Sans"';
+    ctx.fillText(habit.name.toUpperCase(), size / 2, 210);
+
+    var cur = currentStreak(habit);
+    var numText = String(cur);
+    var numSize = 340;
+    if (numText.length >= 4) numSize = 240;
+    else if (numText.length === 3) numSize = 280;
+    ctx.font = '600 ' + numSize + 'px "Space Grotesk"';
+    ctx.fillText(numText, size / 2, size / 2 + numSize * 0.32);
+
+    ctx.font = '400 40px "Work Sans"';
+    ctx.fillText('day streak', size / 2, size / 2 + numSize * 0.32 + 70);
+
+    ctx.font = '500 30px "Work Sans"';
+    ctx.fillStyle = '#FBDCCE';
+    ctx.fillText('Best streak: ' + bestStreak(habit) + ' days', size / 2, size - 160);
+
+    ctx.font = '600 28px "Work Sans"';
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillText('STACK IT', size / 2, size - 80);
+
+    return canvas;
+  }
+
+  function shareStreakCard(habitId) {
+    var habit = findHabit(habitId);
+    if (!habit) return;
+    document.fonts.ready.then(function () {
+      var canvas = drawStreakCard(habit);
+      canvas.toBlob(function (blob) {
+        if (!blob) return;
+        var fileName = habit.name.replace(/[^a-z0-9]+/gi, '-').toLowerCase() + '-streak.png';
+        var file = new File([blob], fileName, { type: 'image/png' });
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          navigator.share({ files: [file], title: habit.name + ' streak' }).catch(function () {});
+        } else {
+          window.open(URL.createObjectURL(blob), '_blank');
+        }
+      }, 'image/png');
+    });
+  }
+
   // ---------- streak actions ----------
 
   function resyncMilestonesHit(habit) {
     var cur = currentStreak(habit);
-    habit.milestonesHit = MILESTONES.filter(function (m) { return cur >= m.days; }).map(function (m) { return m.key; });
+    habit.milestonesHit = habitMilestones(habit).filter(function (m) { return cur >= m.days; }).map(function (m) { return m.key; });
   }
 
   function toggleDoneToday(habitId) {
@@ -798,7 +917,7 @@
     if (habit.archived) return;
     var cur = currentStreak(habit);
     habit.milestonesHit = habit.milestonesHit || [];
-    MILESTONES.forEach(function (m) {
+    habitMilestones(habit).forEach(function (m) {
       if (cur >= m.days && habit.milestonesHit.indexOf(m.key) === -1) {
         habit.milestonesHit.push(m.key);
         state.milestoneQueue.push({ habitName: habit.name, title: m.title });
@@ -921,6 +1040,8 @@
     document.getElementById('detailBackBtn').addEventListener('click', function () { goToScreen('home'); });
     document.getElementById('detailEditBtn').addEventListener('click', function () { openHabitSheet(state.currentHabitId); });
     document.getElementById('markDoneBtn').addEventListener('click', function () { toggleDoneToday(state.currentHabitId); });
+    document.getElementById('saveStreakCardBtn').addEventListener('click', function () { shareStreakCard(state.currentHabitId); });
+    document.getElementById('addMilestoneBtn').addEventListener('click', function () { addCustomMilestone(state.currentHabitId); });
     document.getElementById('calPrevBtn').addEventListener('click', function () {
       state.calendarOffset -= 1;
       renderCalendar(findHabit(state.currentHabitId));
