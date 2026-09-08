@@ -45,7 +45,8 @@
     { text: "It's not what we do once in a while that shapes our lives, but what we do consistently.", author: 'Tony Robbins' },
     { text: 'The chains of habit are too weak to be felt until they are too strong to be broken.', author: 'Samuel Johnson' },
     { text: 'Every action you take is a vote for the type of person you wish to become.', author: 'James Clear' },
-    { text: 'Habits are the compound interest of self-improvement.', author: 'James Clear' }
+    { text: 'Habits are the compound interest of self-improvement.', author: 'James Clear' },
+    { text: "Whether you think you can or you think you can't, you're right.", author: 'Henry Ford' }
   ];
 
   function todaysQuote() {
