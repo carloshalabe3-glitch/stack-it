@@ -419,7 +419,6 @@
 
     detailRefs = { habitId: habitId };
 
-    renderHeatmap(habit);
     renderHistory(habit);
   }
 
@@ -444,28 +443,6 @@
       cursor.setDate(cursor.getDate() - 1);
     }
     return lastKey;
-  }
-
-  function renderHeatmap(habit) {
-    var host = document.getElementById('heatmap');
-    host.innerHTML = '';
-    var done = {};
-    habit.completedDates.forEach(function (k) { done[k] = true; });
-    var today = new Date();
-    for (var i = 89; i >= 0; i--) {
-      var d = new Date(today);
-      d.setDate(d.getDate() - i);
-      var key = dateKey(d);
-      var cell = el('div', 'heat-cell');
-      var isDone = !!done[key];
-      if (d.getTime() < new Date(habit.createdAt).setHours(0, 0, 0, 0)) {
-        cell.style.opacity = '0.35';
-      } else if (!isDone && !isRequired(habit, d, key)) {
-        cell.style.opacity = '0.4';
-      }
-      if (isDone) cell.setAttribute('data-done', '1');
-      host.appendChild(cell);
-    }
   }
 
   function renderHistory(habit) {
