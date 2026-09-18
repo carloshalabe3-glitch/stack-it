@@ -4,12 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
 <title>Stack it</title>
-<meta name="description" content="A private streak tracker for building good habits.">
+<meta name="description" content="A private streak tracker for building good habits. Everything stays on your device.">
 
 <link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#D6451F">
+<meta name="theme-color" content="#FFFFFF">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Stack it">
 <meta name="mobile-web-app-capable" content="yes">
 <link rel="apple-touch-icon" href="icons/icon-180.png">
@@ -19,133 +19,313 @@
 </head>
 <body>
 
-<!-- ============ HOME SCREEN ============ -->
-<div id="homeScreen" class="screen">
-  <div class="app-shell">
-    <div class="topbar">
-      <h1>Stack it</h1>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="sym-tally" viewBox="0 0 48 48">
+      <path class="tally-stroke" d="M12 10v28"/>
+      <path class="tally-stroke" d="M20 10v28"/>
+      <path class="tally-stroke" d="M28 10v28"/>
+      <path class="tally-stroke" d="M36 10v28"/>
+      <path class="tally-stroke tally-slash" d="M8 32L40 16"/>
+    </symbol>
+    <symbol id="sym-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+    <symbol id="sym-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="sym-back" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></symbol>
+    <symbol id="sym-grid" viewBox="0 0 24 24"><rect x="4" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.5"/></symbol>
+    <symbol id="sym-list" viewBox="0 0 24 24"><path d="M5 7h14M5 12h14M5 17h14"/></symbol>
+    <symbol id="sym-home" viewBox="0 0 24 24"><path d="M4 11l8-7 8 7v9a1 1 0 01-1 1h-4v-6h-6v6H5a1 1 0 01-1-1z"/></symbol>
+    <symbol id="sym-insights" viewBox="0 0 24 24"><path d="M5 19V13M12 19V6M19 19v-9"/></symbol>
+    <symbol id="sym-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3v2.2M12 18.8V21M3 12h2.2M18.8 12H21M5.6 5.6l1.6 1.6M16.8 16.8l1.6 1.6M5.6 18.4l1.6-1.6M16.8 7.2l1.6-1.6"/></symbol>
+    <symbol id="sym-share" viewBox="0 0 24 24"><path d="M12 3v12M8 7l4-4 4 4"/><path d="M5 12v7a1 1 0 001 1h12a1 1 0 001-1v-7"/></symbol>
+    <symbol id="sym-chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></symbol>
+    <symbol id="sym-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+    <symbol id="sym-flag" viewBox="0 0 24 24"><path d="M5 21V4"/><path d="M5 4h11l-2 4 2 4H5"/></symbol>
+    <symbol id="sym-pause" viewBox="0 0 24 24"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></symbol>
+    <symbol id="sym-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 018 0v3"/></symbol>
+    <symbol id="sym-sunrise" viewBox="0 0 24 24"><path d="M4 18h16M6 14a6 6 0 0112 0"/><path d="M12 3v3M5 7l1.5 1.5M19 7l-1.5 1.5"/></symbol>
+  </defs>
+</svg>
+
+<div class="app">
+
+<!-- ============ HOME ============ -->
+<section id="homeScreen" class="screen is-active" data-screen="home">
+  <div class="shell">
+    <header class="topbar">
+      <div class="brand">
+        <svg class="brand-mark" aria-hidden="true"><use href="#sym-tally"/></svg>
+        <h1>Stack it</h1>
+      </div>
       <div class="topbar-actions">
-        <button class="icon-btn" id="dayFilterBtn">All</button>
-        <button class="icon-btn" id="viewToggleBtn">Grid</button>
-        <button class="icon-btn" id="overviewBtn">Overview</button>
+        <button class="icon-btn" id="viewToggleBtn" aria-label="Switch to grid view"><svg><use href="#sym-grid"/></svg></button>
+        <button class="icon-btn icon-btn-primary" id="addHabitBtn" aria-label="Add a habit"><svg><use href="#sym-plus"/></svg></button>
       </div>
+    </header>
+
+    <div id="homeMain">
+      <div class="day-head" id="dayHead">
+        <div class="day-head-text">
+          <div class="eyebrow" id="dayDate"></div>
+          <div class="day-status" id="dayStatus"></div>
+          <div class="day-sub" id="daySub"></div>
+        </div>
+        <div class="day-ring" id="dayRing" aria-hidden="true">
+          <svg viewBox="0 0 48 48">
+            <circle class="ring-track" cx="24" cy="24" r="20"/>
+            <circle class="ring-fill" id="dayRingFill" cx="24" cy="24" r="20"/>
+          </svg>
+          <div class="ring-label" id="dayRingLabel"></div>
+        </div>
+      </div>
+
+      <div class="seg" id="dayFilterSeg" role="tablist">
+        <button class="seg-opt" data-filter="today" role="tab">Today</button>
+        <button class="seg-opt" data-filter="all" role="tab">All habits</button>
+        <span class="seg-thumb" aria-hidden="true"></span>
+      </div>
+
+      <div id="habitList" class="habit-list"></div>
+
+      <div id="emptyState" class="empty-state hidden">
+        <div class="empty-glyph"><svg><use href="#sym-sunrise"/></svg></div>
+        <p class="empty-title" id="emptyTitle"></p>
+        <p class="empty-text" id="emptyText"></p>
+        <button class="btn btn-primary" id="emptyAddBtn">Add a habit</button>
+      </div>
+
+      <figure class="quote-card" id="quoteCard">
+        <blockquote class="quote-text" id="quoteText"></blockquote>
+        <figcaption class="quote-author" id="quoteAuthor"></figcaption>
+      </figure>
     </div>
-    <div id="quoteStrip" class="quote-strip">
-      <p class="quote-text" id="quoteText"></p>
-      <p class="quote-author" id="quoteAuthor"></p>
-    </div>
-    <div id="habitList" class="habit-list"></div>
-    <div id="emptyState" class="empty-state hidden">
-      <p id="emptyStateText">Nothing stacked yet. Add the first habit you want to build &mdash; you can add more anytime.</p>
-      <button class="btn btn-primary" id="emptyAddBtn">Add a habit</button>
+
+    <div id="onboarding" class="onboarding hidden">
+      <div class="onb-mark">
+        <svg class="tally-anim" aria-hidden="true"><use href="#sym-tally"/></svg>
+      </div>
+      <h2 class="onb-title">Small things,<br>stacked daily.</h2>
+      <p class="onb-lede">Stack it keeps an honest count of the habits you're building. Mark each one done, watch the streak grow, and don't let it drop.</p>
+      <ul class="onb-principles">
+        <li><span class="onb-ico"><svg><use href="#sym-lock"/></svg></span><div><b>Streaks are honest.</b> Miss a scheduled day and the count resets to zero. No freezes, no forgiveness.</div></li>
+        <li><span class="onb-ico"><svg><use href="#sym-sunrise"/></svg></span><div><b>Today gets grace.</b> An unfinished today never breaks a streak until midnight does.</div></li>
+        <li><span class="onb-ico"><svg><use href="#sym-pause"/></svg></span><div><b>Time off is real.</b> Block out travel or observance and nothing counts against you.</div></li>
+      </ul>
+      <button class="btn btn-primary btn-block btn-lg" id="onbStartBtn">Start your first habit</button>
+      <div class="onb-picks-label">Or pick a quick start</div>
+      <div class="onb-picks" id="onbPicks"></div>
+      <p class="onb-foot">Everything stays on this device. No account, no cloud.</p>
     </div>
   </div>
-  <button class="btn btn-primary fab" id="addHabitFab">+ Add habit</button>
-</div>
+</section>
 
-<!-- ============ HABIT DETAIL SCREEN ============ -->
-<div id="detailScreen" class="screen hidden">
-  <div class="app-shell">
-    <div class="detail-header">
-      <button class="icon-btn" id="detailBackBtn">Back</button>
-      <button class="icon-btn" id="detailEditBtn">Edit</button>
-    </div>
-    <div class="detail-hero">
-      <div class="detail-hero-name" id="detailName"></div>
-      <div class="detail-hero-streak" id="detailStreakNum">0</div>
-      <div class="detail-hero-unit" id="detailStreakUnit">day streak</div>
-      <div class="detail-hero-since" id="detailSince"></div>
-      <div class="detail-hero-schedule" id="detailSchedule"></div>
-      <button class="hero-edit-link" id="saveStreakCardBtn">Save streak card</button>
-    </div>
-    <div class="detail-stats">
-      <div class="detail-stat">
-        <div class="detail-stat-num" id="detailBest">0</div>
-        <div class="detail-stat-label">best streak (days)</div>
+<!-- ============ HABIT DETAIL ============ -->
+<section id="detailScreen" class="screen" data-screen="detail">
+  <div class="shell">
+    <header class="topbar topbar-sub">
+      <button class="icon-btn" id="detailBackBtn" aria-label="Back"><svg><use href="#sym-back"/></svg></button>
+      <div class="topbar-title" id="detailTopTitle"></div>
+      <button class="text-btn" id="detailEditBtn">Edit</button>
+    </header>
+
+    <div class="hero" id="detailHero">
+      <div class="hero-icon" id="detailIcon"></div>
+      <h2 class="hero-name" id="detailName"></h2>
+      <div class="hero-streak-wrap">
+        <div class="hero-streak" id="detailStreakNum">0</div>
+        <div class="hero-unit" id="detailStreakUnit">day streak</div>
       </div>
-      <div class="detail-stat">
-        <div class="detail-stat-num" id="detailTotalCount">0</div>
-        <div class="detail-stat-label">total days logged</div>
-      </div>
+      <div class="hero-since" id="detailSince"></div>
+      <div class="hero-chips" id="detailChips"></div>
     </div>
+
     <div class="detail-actions">
-      <button class="btn btn-primary btn-block" id="markDoneBtn">Mark done today</button>
+      <button class="btn btn-primary btn-lg btn-block" id="markDoneBtn"><span class="btn-check"><svg><use href="#sym-check"/></svg></span><span id="markDoneLabel">Mark done today</span></button>
+      <button class="btn btn-ghost btn-block" id="saveStreakCardBtn"><svg class="btn-ico"><use href="#sym-share"/></svg>Share streak card</button>
     </div>
-    <div class="detail-section">
-      <div class="cal-header">
-        <button class="cal-nav" id="calPrevBtn">Prev</button>
-        <span class="cal-month-label" id="calMonthLabel"></span>
-        <button class="cal-nav" id="calNextBtn">Next</button>
-      </div>
-      <div class="cal-weekdays">
-        <span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span>
-      </div>
-      <div class="cal-grid" id="calGrid"></div>
-    </div>
-    <div class="detail-section">
-      <h2>History</h2>
-      <div id="historyList" class="history-list"></div>
-    </div>
-    <div class="detail-section">
-      <h2>Custom milestones</h2>
-      <div id="milestoneListEl"></div>
-      <div class="add-activity-row add-milestone-row">
-        <input type="number" id="newMilestoneDaysInput" placeholder="Days" min="1" max="36500">
-        <input type="text" id="newMilestoneLabelInput" placeholder="Label (optional)" maxlength="40">
-        <button class="btn" id="addMilestoneBtn">Add</button>
-      </div>
-    </div>
-    <div class="detail-danger">
-      <button class="btn btn-block" id="archiveBtn">Archive habit</button>
-      <button class="btn btn-danger btn-block" id="deleteBtn">Delete</button>
-    </div>
-  </div>
-</div>
 
-<!-- ============ OVERVIEW SCREEN ============ -->
-<div id="overviewScreen" class="screen hidden">
-  <div class="app-shell">
-    <div class="detail-header">
-      <button class="icon-btn" id="overviewBackBtn">Back</button>
+    <div class="stat-row">
+      <div class="stat"><div class="stat-num" id="detailBest">0</div><div class="stat-label">Best streak</div></div>
+      <div class="stat"><div class="stat-num" id="detailTotalCount">0</div><div class="stat-label">Days logged</div></div>
+      <div class="stat"><div class="stat-num" id="detailRate">–</div><div class="stat-label">Last 30 days</div></div>
     </div>
-    <div id="overviewList"></div>
-    <div class="detail-section">
-      <h2>Settings</h2>
-      <button class="settings-row" id="timeOffBtn">Time off</button>
-      <button class="settings-row" id="backupBtn">Backup &amp; restore</button>
+
+    <section class="card">
+      <div class="card-head">
+        <h3>Milestones</h3>
+        <span class="card-head-note" id="milestoneNote"></span>
+      </div>
+      <div class="next-milestone" id="nextMilestone"></div>
+      <div class="milestone-track" id="milestoneTrack"></div>
+      <details class="add-milestone">
+        <summary>Add a custom target</summary>
+        <div class="add-row">
+          <input type="number" id="newMilestoneDaysInput" placeholder="Days" min="1" max="36500" inputmode="numeric">
+          <input type="text" id="newMilestoneLabelInput" placeholder="Name it (optional)" maxlength="40">
+          <button class="btn btn-sm" id="addMilestoneBtn">Add</button>
+        </div>
+      </details>
+    </section>
+
+    <section class="card">
+      <div class="cal-header">
+        <button class="cal-nav" id="calPrevBtn" aria-label="Previous month"><svg><use href="#sym-back"/></svg></button>
+        <span class="cal-month-label" id="calMonthLabel"></span>
+        <button class="cal-nav" id="calNextBtn" aria-label="Next month"><svg><use href="#sym-chev"/></svg></button>
+      </div>
+      <div class="cal-weekdays"><span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span></div>
+      <div class="cal-grid" id="calGrid"></div>
+      <div class="cal-legend">
+        <span><i class="lg lg-done"></i>Done</span>
+        <span><i class="lg lg-miss"></i>Missed</span>
+        <span><i class="lg lg-rest"></i>Rest day</span>
+        <span><i class="lg lg-off"></i>Time off</span>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h3>History</h3>
+        <button class="text-btn text-btn-sm" id="historyToggleBtn"></button>
+      </div>
+      <div id="historyList" class="row-list"></div>
+    </section>
+
+    <div class="danger-zone">
+      <button class="text-btn" id="archiveBtn">Archive habit</button>
+      <button class="text-btn text-btn-danger" id="deleteBtn">Delete habit</button>
     </div>
   </div>
-</div>
+</section>
+
+<!-- ============ INSIGHTS ============ -->
+<section id="insightsScreen" class="screen" data-screen="insights">
+  <div class="shell">
+    <header class="topbar">
+      <div class="brand"><h1>Insights</h1></div>
+    </header>
+    <div id="insightsEmpty" class="empty-state hidden">
+      <div class="empty-glyph"><svg><use href="#sym-insights"/></svg></div>
+      <p class="empty-title">Nothing to chart yet</p>
+      <p class="empty-text">Log a few days and this page starts telling you a story: how the weeks are going, which days you're strongest, and what's on the line.</p>
+    </div>
+    <div id="insightsMain">
+      <div class="seg" id="insightsRangeSeg">
+        <button class="seg-opt" data-range="week">Weekly</button>
+        <button class="seg-opt" data-range="month">Monthly</button>
+        <span class="seg-thumb" aria-hidden="true"></span>
+      </div>
+      <div class="recap" id="recapCard"></div>
+      <section class="card">
+        <div class="card-head">
+          <h3 id="trendTitle">Completion by week</h3>
+        </div>
+        <div class="chart" id="trendChart"></div>
+        <div class="chart-caption" id="trendCaption"></div>
+      </section>
+      <section class="card">
+        <div class="card-head">
+          <h3>Your strongest days</h3>
+          <span class="card-head-note">Last 8 weeks</span>
+        </div>
+        <div class="chart" id="weekdayChart"></div>
+        <div class="chart-caption" id="weekdayCaption"></div>
+      </section>
+      <section class="card">
+        <div class="card-head">
+          <h3>Streaks right now</h3>
+        </div>
+        <div id="streakBoard" class="streak-board"></div>
+      </section>
+      <div class="stat-row stat-row-card" id="insightsTotals"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SETTINGS ============ -->
+<section id="settingsScreen" class="screen" data-screen="settings">
+  <div class="shell">
+    <header class="topbar">
+      <div class="brand"><h1>Settings</h1></div>
+    </header>
+
+    <section class="card card-flush">
+      <div class="card-head card-head-pad"><h3>Your habits</h3><button class="text-btn text-btn-sm" id="settingsAddBtn">Add</button></div>
+      <div id="settingsHabitList" class="row-list"></div>
+    </section>
+
+    <section class="card card-flush" id="archivedCard">
+      <div class="card-head card-head-pad"><h3>Archived</h3></div>
+      <div id="archivedList" class="row-list"></div>
+    </section>
+
+    <section class="card card-flush">
+      <div class="card-head card-head-pad"><h3>Preferences</h3></div>
+      <button class="settings-row" id="timeOffBtn">
+        <span class="settings-row-ico"><svg><use href="#sym-pause"/></svg></span>
+        <span class="settings-row-text"><b>Time off</b><small id="timeOffSummary"></small></span>
+        <svg class="settings-row-chev"><use href="#sym-chev"/></svg>
+      </button>
+      <button class="settings-row" id="backupBtn">
+        <span class="settings-row-ico"><svg><use href="#sym-share"/></svg></span>
+        <span class="settings-row-text"><b>Backup &amp; restore</b><small>Copy your data out, or bring it back</small></span>
+        <svg class="settings-row-chev"><use href="#sym-chev"/></svg>
+      </button>
+    </section>
+
+    <div class="about">
+      <svg class="about-mark" aria-hidden="true"><use href="#sym-tally"/></svg>
+      <p><b>Stack it</b> keeps count of what you're building. Everything you log lives on this device only. No account, no cloud, no one watching but you.</p>
+      <p class="about-version" id="aboutVersion"></p>
+    </div>
+  </div>
+</section>
+
+</div><!-- /.app -->
+
+<!-- ============ TAB BAR ============ -->
+<nav class="tabbar" id="tabbar">
+  <button class="tab is-active" data-tab="home"><svg><use href="#sym-home"/></svg><span>Home</span></button>
+  <button class="tab" data-tab="insights"><svg><use href="#sym-insights"/></svg><span>Insights</span></button>
+  <button class="tab" data-tab="settings"><svg><use href="#sym-settings"/></svg><span>Settings</span></button>
+</nav>
 
 <!-- ============ ADD/EDIT HABIT SHEET ============ -->
-<div id="habitSheet" class="sheet-backdrop hidden">
-  <div class="sheet">
-    <h2 id="habitSheetTitle">Add a habit</h2>
+<div id="habitSheet" class="sheet-backdrop hidden" data-sheet>
+  <div class="sheet" role="dialog" aria-modal="true">
+    <div class="sheet-handle"></div>
+    <h2 id="habitSheetTitle">New habit</h2>
     <div class="field">
       <label for="habitNameInput">What are you building?</label>
-      <input type="text" id="habitNameInput" placeholder="e.g. exercise, reading, meditation" maxlength="40">
+      <input type="text" id="habitNameInput" placeholder="Read 20 pages, stretch, call Mom…" maxlength="40" autocomplete="off">
     </div>
     <div class="field">
-      <label>Icon (optional)</label>
+      <label>Give it an icon</label>
       <div class="icon-grid" id="iconGrid"></div>
     </div>
     <div class="field">
-      <label>Which days does this count?</label>
+      <label>Which days count?</label>
+      <div class="preset-row" id="dayPresets">
+        <button type="button" class="chip" data-preset="every">Every day</button>
+        <button type="button" class="chip" data-preset="weekdays">Weekdays</button>
+        <button type="button" class="chip" data-preset="weekends">Weekends</button>
+      </div>
       <div class="day-grid" id="dayGrid"></div>
+      <div class="field-hint" id="dayGridHint"></div>
       <div id="dayGridError" class="field-error"></div>
     </div>
     <div class="sheet-actions">
       <button class="btn" id="habitSheetCancel">Cancel</button>
-      <button class="btn btn-primary" id="habitSheetSave">Save</button>
+      <button class="btn btn-primary" id="habitSheetSave">Save habit</button>
     </div>
   </div>
 </div>
 
-<!-- ============ CONFIRM SHEET (generic) ============ -->
-<div id="confirmSheet" class="sheet-backdrop hidden">
-  <div class="sheet">
+<!-- ============ CONFIRM SHEET ============ -->
+<div id="confirmSheet" class="sheet-backdrop hidden" data-sheet>
+  <div class="sheet sheet-compact" role="alertdialog" aria-modal="true">
+    <div class="sheet-handle"></div>
     <h2 id="confirmTitle">Are you sure?</h2>
-    <p class="confirm-text" id="confirmText"></p>
+    <p class="sheet-text" id="confirmText"></p>
     <div class="sheet-actions">
       <button class="btn" id="confirmCancel">Cancel</button>
       <button class="btn btn-danger" id="confirmOk">Confirm</button>
@@ -154,28 +334,69 @@
 </div>
 
 <!-- ============ TIME OFF SHEET ============ -->
-<div id="timeOffSheet" class="sheet-backdrop hidden">
-  <div class="sheet">
+<div id="timeOffSheet" class="sheet-backdrop hidden" data-sheet>
+  <div class="sheet" role="dialog" aria-modal="true">
+    <div class="sheet-handle"></div>
     <h2>Time off</h2>
-    <p class="confirm-text">Days in these ranges don't count against any habit's streak &mdash; every habit skips them, including ones you add later. Use this for travel, holidays, or anything that makes every habit impossible for a while.</p>
-    <div id="timeOffList" class="history-list"></div>
-    <div class="backup-divider"></div>
+    <p class="sheet-text">Days in these ranges don't count for or against any habit. Use it for the times a habit is genuinely impossible: travel, illness, observance. Not for a day you'd rather skip.</p>
+    <div id="timeOffList" class="row-list"></div>
+    <div class="divider"></div>
     <div class="field">
-      <label for="timeOffLabel">What's this for? (optional)</label>
-      <input type="text" id="timeOffLabel" placeholder="e.g. Passover, trip to Mexico" maxlength="40">
+      <label for="timeOffLabel">What's it for? <span class="opt">optional</span></label>
+      <input type="text" id="timeOffLabel" placeholder="Passover, trip to Mexico…" maxlength="40">
     </div>
-    <div class="field">
-      <label for="timeOffStart">From</label>
-      <input type="date" id="timeOffStart">
-    </div>
-    <div class="field">
-      <label for="timeOffEnd">Through</label>
-      <input type="date" id="timeOffEnd">
+    <div class="field-pair">
+      <div class="field">
+        <label for="timeOffStart">From</label>
+        <input type="date" id="timeOffStart">
+      </div>
+      <div class="field">
+        <label for="timeOffEnd">Through</label>
+        <input type="date" id="timeOffEnd">
+      </div>
     </div>
     <div id="timeOffError" class="field-error"></div>
     <div class="sheet-actions">
-      <button class="btn" id="timeOffClose">Close</button>
-      <button class="btn btn-primary" id="timeOffSave">Add</button>
+      <button class="btn" id="timeOffClose">Done</button>
+      <button class="btn btn-primary" id="timeOffSave">Add time off</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ BACKUP & RESTORE SHEET ============ -->
+<div id="backupSheet" class="sheet-backdrop hidden" data-sheet>
+  <div class="sheet" role="dialog" aria-modal="true">
+    <div class="sheet-handle"></div>
+    <h2>Backup &amp; restore</h2>
+    <p class="sheet-text">Your data lives only on this device. Copy this text somewhere safe, like Notes or a password manager, and paste it back below if you ever reinstall.</p>
+    <div class="field">
+      <label for="backupExportArea">Your backup</label>
+      <textarea id="backupExportArea" class="mono-area" readonly rows="4"></textarea>
+    </div>
+    <button class="btn btn-block" id="backupCopyBtn">Copy backup</button>
+    <div class="divider"></div>
+    <div class="field">
+      <label for="backupImportArea">Restore from a backup</label>
+      <textarea id="backupImportArea" class="mono-area" rows="4" placeholder="Paste backup text here"></textarea>
+    </div>
+    <div id="backupImportError" class="field-error"></div>
+    <div class="sheet-actions">
+      <button class="btn" id="backupCloseBtn">Close</button>
+      <button class="btn btn-danger" id="backupRestoreBtn">Restore</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ STREAK CARD PREVIEW ============ -->
+<div id="cardSheet" class="sheet-backdrop hidden" data-sheet>
+  <div class="sheet" role="dialog" aria-modal="true">
+    <div class="sheet-handle"></div>
+    <h2>Your streak card</h2>
+    <div class="card-preview" id="cardPreview"><div class="card-preview-loading"><svg class="tally-anim tally-anim-loop"><use href="#sym-tally"/></svg></div></div>
+    <p class="sheet-text sheet-text-center" id="cardHint"></p>
+    <div class="sheet-actions">
+      <button class="btn" id="cardCloseBtn">Close</button>
+      <button class="btn btn-primary" id="cardShareBtn"><svg class="btn-ico"><use href="#sym-share"/></svg>Share</button>
     </div>
   </div>
 </div>
@@ -183,38 +404,16 @@
 <!-- ============ MILESTONE CELEBRATION ============ -->
 <div id="milestoneBackdrop" class="milestone-backdrop hidden">
   <div class="milestone-card">
+    <div class="confetti" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+    <svg class="milestone-mark tally-anim" aria-hidden="true"><use href="#sym-tally"/></svg>
     <div class="milestone-eyebrow" id="milestoneHabitName"></div>
-    <div class="milestone-title" id="milestoneTitle">1 week streak</div>
-    <div class="milestone-sub" id="milestoneSub">Keep it up. This one counts.</div>
-    <button class="btn btn-block" id="milestoneOkBtn">Keep going</button>
+    <div class="milestone-title" id="milestoneTitle"></div>
+    <div class="milestone-sub" id="milestoneSub"></div>
+    <button class="btn btn-block btn-lg" id="milestoneOkBtn">Keep stacking</button>
   </div>
 </div>
 
-<!-- ============ BACKUP & RESTORE SHEET ============ -->
-<div id="backupSheet" class="sheet-backdrop hidden">
-  <div class="sheet">
-    <h2>Backup &amp; restore</h2>
-    <p class="confirm-text">Copy this text somewhere safe &mdash; Notes, a password manager, an email to yourself. If you update or reinstall the app, paste it back in below to restore everything: habits, streaks, and history.</p>
-    <div class="field">
-      <label for="backupExportArea">Your backup</label>
-      <textarea id="backupExportArea" class="backup-textarea" readonly rows="5"></textarea>
-    </div>
-    <button class="btn btn-block" id="backupCopyBtn">Copy to clipboard</button>
-    <div id="backupCopyStatus" class="backup-status"></div>
-
-    <div class="backup-divider"></div>
-
-    <div class="field">
-      <label for="backupImportArea">Restore from a backup</label>
-      <textarea id="backupImportArea" class="backup-textarea" rows="5" placeholder="Paste your backup text here"></textarea>
-    </div>
-    <div id="backupImportError" class="confirm-text" style="color:var(--danger); margin-bottom:0.5rem;"></div>
-    <div class="sheet-actions">
-      <button class="btn" id="backupCloseBtn">Close</button>
-      <button class="btn btn-danger" id="backupRestoreBtn">Restore</button>
-    </div>
-  </div>
-</div>
+<div id="toast" class="toast hidden"><span id="toastText"></span><button class="toast-action hidden" id="toastAction"></button></div>
 
 <script src="app.js"></script>
 </body>
