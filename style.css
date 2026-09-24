@@ -993,6 +993,8 @@ svg { display: block; }
 .cal-cell.is-done { background: var(--flame); color: #fff; font-weight: 600; }
 .cal-cell.is-today { box-shadow: inset 0 0 0 2px var(--ink); font-weight: 700; }
 .cal-cell.is-today.is-done { box-shadow: inset 0 0 0 2px var(--flame-deep); }
+.cal-cell.is-editable { cursor: pointer; transition: transform 120ms var(--ease-out); }
+.cal-cell.is-editable:active { transform: scale(0.86); }
 
 .cal-legend { display: flex; flex-wrap: wrap; gap: 0.4rem 0.9rem; margin-top: 0.85rem; font-size: 0.75rem; color: var(--ink-soft); }
 .cal-legend span { display: inline-flex; align-items: center; gap: 0.35rem; }

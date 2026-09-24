@@ -898,12 +898,18 @@
       var key = dateKey(cellDate);
       var isToday = cellDate.getTime() === todayDate.getTime();
       if (isToday) cell.classList.add('is-today');
-      if (cellDate < createdDate) cell.classList.add('is-before');
-      else if (cellDate > todayDate) cell.classList.add('is-future');
-      else if (done[key]) cell.classList.add('is-done');
-      else if (isTimeOff(key)) cell.classList.add('is-off');
-      else if (habit.scheduleDays.indexOf(cellDate.getDay()) === -1) cell.classList.add('is-rest');
-      else if (!isToday) cell.classList.add('is-miss');
+      if (cellDate < createdDate) {
+        cell.classList.add('is-before');
+      } else if (cellDate > todayDate) {
+        cell.classList.add('is-future');
+      } else {
+        cell.classList.add('is-editable');
+        cell.dataset.key = key;
+        if (done[key]) cell.classList.add('is-done');
+        else if (isTimeOff(key)) cell.classList.add('is-off');
+        else if (habit.scheduleDays.indexOf(cellDate.getDay()) === -1) cell.classList.add('is-rest');
+        else if (!isToday) cell.classList.add('is-miss');
+      }
       grid.appendChild(cell);
     }
 
@@ -1678,6 +1684,22 @@
     else renderHome();
   }
 
+  // Tapping a calendar day toggles it directly, so a missed log from an
+  // earlier day can be fixed without waiting for "today" to roll around.
+  function toggleDoneOnDate(habitId, key) {
+    var habit = findHabit(habitId);
+    if (!habit) return;
+    var idx = habit.completedDates.indexOf(key);
+    var nowDone = idx === -1;
+    if (nowDone) habit.completedDates.push(key);
+    else habit.completedDates.splice(idx, 1);
+    saveData();
+    if (nowDone) checkMilestonesForHabit(habit);
+    else resyncMilestonesHit(habit);
+    renderDetail(habitId);
+    showToast(nowDone ? 'Marked done.' : 'Unmarked.');
+  }
+
   function removeHistoryEntry(habitId, key) {
     var habit = findHabit(habitId);
     if (!habit) return;
@@ -1922,6 +1944,11 @@
     $('calNextBtn').addEventListener('click', function () {
       state.calendarOffset += 1;
       renderCalendar(findHabit(state.currentHabitId));
+    });
+    $('calGrid').addEventListener('click', function (e) {
+      var cell = e.target.closest('.cal-cell.is-editable');
+      if (!cell) return;
+      toggleDoneOnDate(state.currentHabitId, cell.dataset.key);
     });
     $('archiveBtn').addEventListener('click', function () {
       var habit = findHabit(state.currentHabitId);
