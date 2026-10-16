@@ -264,9 +264,9 @@
     return false;
   }
 
-  // A day "counts" toward this habit's streak only if it's on the weekly
-  // schedule and not inside an app-wide time-off range. Days that don't
-  // count are transparently skipped — they neither break nor extend the streak.
+  // A day is "required" if it's on the weekly schedule and not inside an
+  // app-wide time-off range. Only a missed required day breaks a streak;
+  // any day actually done — scheduled or a bonus rest day — adds to it.
   function isRequired(habit, date, key) {
     if (habit.scheduleDays.indexOf(date.getDay()) === -1) return false;
     if (isTimeOff(key)) return false;
@@ -296,13 +296,10 @@
     var streak = 0;
     while (cursor >= floor) {
       var key = dateKey(cursor);
-      if (isRequired(habit, cursor, key)) {
-        if (set[key]) {
-          streak++;
-        } else if (key !== today) {
-          break;
-        }
-        // if it's today and not yet done, give grace: don't count, don't break, keep looking back
+      if (set[key]) {
+        streak++;
+      } else if (key !== today && isRequired(habit, cursor, key)) {
+        break;
       }
       cursor.setDate(cursor.getDate() - 1);
     }
@@ -321,13 +318,11 @@
     var run = 0;
     while (cursor <= end) {
       var key = dateKey(cursor);
-      if (isRequired(habit, cursor, key)) {
-        if (set[key]) {
-          run++;
-          if (run > best) best = run;
-        } else if (key !== today) {
-          run = 0;
-        }
+      if (set[key]) {
+        run++;
+        if (run > best) best = run;
+      } else if (key !== today && isRequired(habit, cursor, key)) {
+        run = 0;
       }
       cursor.setDate(cursor.getDate() + 1);
     }
@@ -345,12 +340,10 @@
     var lastKey = today;
     while (cursor >= floor) {
       var key = dateKey(cursor);
-      if (isRequired(habit, cursor, key)) {
-        if (set[key]) {
-          lastKey = key;
-        } else if (key !== today) {
-          break;
-        }
+      if (set[key]) {
+        lastKey = key;
+      } else if (key !== today && isRequired(habit, cursor, key)) {
+        break;
       }
       cursor.setDate(cursor.getDate() - 1);
     }
@@ -898,24 +891,23 @@
       var key = dateKey(cellDate);
       var isToday = cellDate.getTime() === todayDate.getTime();
       if (isToday) cell.classList.add('is-today');
-      if (cellDate < createdDate) {
-        cell.classList.add('is-before');
-      } else if (cellDate > todayDate) {
+      if (cellDate > todayDate) {
         cell.classList.add('is-future');
       } else {
         cell.classList.add('is-editable');
         cell.dataset.key = key;
         if (done[key]) cell.classList.add('is-done');
-        else if (isTimeOff(key)) cell.classList.add('is-off');
-        else if (habit.scheduleDays.indexOf(cellDate.getDay()) === -1) cell.classList.add('is-rest');
-        else if (!isToday) cell.classList.add('is-miss');
+        else if (cellDate >= createdDate) {
+          if (isTimeOff(key)) cell.classList.add('is-off');
+          else if (habit.scheduleDays.indexOf(cellDate.getDay()) === -1) cell.classList.add('is-rest');
+          else if (!isToday) cell.classList.add('is-miss');
+        }
       }
       grid.appendChild(cell);
     }
 
-    var createdMonthStart = new Date(createdDate.getFullYear(), createdDate.getMonth(), 1);
     var currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    $('calPrevBtn').disabled = viewDate.getTime() <= createdMonthStart.getTime();
+    $('calPrevBtn').disabled = false;
     $('calNextBtn').disabled = viewDate.getTime() >= currentMonthStart.getTime();
   }
 
@@ -1457,7 +1449,7 @@
     var hint = $('dayGridHint');
     if (sorted.length === 0) hint.textContent = '';
     else if (sorted.length === 7) hint.textContent = 'Counts every day. Miss one and the streak resets.';
-    else hint.textContent = 'Counts on ' + scheduleLabel(sorted) + '. Other days are rest days and never break the streak.';
+    else hint.textContent = 'Counts on ' + scheduleLabel(sorted) + '. Other days never break the streak, and doing it anyway adds a bonus day.';
   }
 
   function saveHabitSheet() {
@@ -1693,6 +1685,9 @@
     var nowDone = idx === -1;
     if (nowDone) habit.completedDates.push(key);
     else habit.completedDates.splice(idx, 1);
+    // A day logged before the habit's start moves the start back, so streaks and insights count it.
+    var dayStart = parseDateKey(key).getTime();
+    if (nowDone && dayStart < startOfDay(new Date(habit.createdAt)).getTime()) habit.createdAt = dayStart;
     saveData();
     if (nowDone) checkMilestonesForHabit(habit);
     else resyncMilestonesHit(habit);
