@@ -99,7 +99,7 @@
   // ---------- storage ----------
 
   function freshData() {
-    return { habits: [], timeOff: [], viewMode: 'list', dayFilter: 'today', onboarded: false, insightsRange: 'week' };
+    return { habits: [], timeOff: [], viewMode: 'list', dayFilter: 'today', onboarded: false, insightsRange: 'week', recapDismissed: null };
   }
 
   var ALL_DAYS = [0, 1, 2, 3, 4, 5, 6];
@@ -162,7 +162,8 @@
       // Migration: anyone with habits already has been onboarded; only a
       // truly empty install sees the welcome screen.
       onboarded: parsed.onboarded === true || habits.length > 0,
-      insightsRange: parsed.insightsRange === 'month' ? 'month' : 'week'
+      insightsRange: parsed.insightsRange === 'month' ? 'month' : 'week',
+      recapDismissed: typeof parsed.recapDismissed === 'string' ? parsed.recapDismissed : null
     };
   }
 
@@ -508,6 +509,7 @@
     $('viewToggleBtn').classList.toggle('hidden', showOnboarding);
     if (showOnboarding) { renderOnboarding(); return; }
 
+    renderWeekRecap();
     renderDayHead();
 
     var all = activeHabits();
@@ -543,8 +545,168 @@
     emptyEl.classList.add('hidden');
 
     list.forEach(function (habit, i) {
-      listEl.appendChild(buildHabitCard(habit, i));
+      listEl.appendChild(wrapSwipe(buildHabitCard(habit, i), habit, i));
     });
+  }
+
+  // ---------- swipe right to mark done ----------
+
+  var SWIPE_FIRE = 0.33;
+
+  function wrapSwipe(card, habit, index) {
+    var wrap = el('div', 'swipe-wrap');
+    wrap.style.setProperty('--i', String(index));
+    var bg = el('div', 'swipe-bg');
+    bg.setAttribute('aria-hidden', 'true');
+    bg.innerHTML = CHECK_SVG;
+    var label = el('span');
+    bg.appendChild(label);
+    wrap.appendChild(bg);
+    wrap.appendChild(card);
+
+    var id = null, startX = 0, startY = 0, dx = 0, mode = null;
+    card.addEventListener('pointerdown', function (e) {
+      if (e.button !== 0 || e.target.closest('.check-btn')) return;
+      id = e.pointerId; startX = e.clientX; startY = e.clientY; dx = 0; mode = null;
+    });
+    card.addEventListener('pointermove', function (e) {
+      if (e.pointerId !== id) return;
+      var mx = e.clientX - startX, my = e.clientY - startY;
+      if (!mode) {
+        if (Math.abs(mx) < 8 && Math.abs(my) < 8) return;
+        mode = mx > 0 && Math.abs(mx) > Math.abs(my) ? 'swipe' : 'scroll';
+        if (mode === 'swipe') {
+          card.setPointerCapture(id);
+          label.textContent = isDoneToday(habit) ? 'Undo' : 'Done';
+          wrap.classList.add('is-swiping');
+        }
+      }
+      if (mode !== 'swipe') return;
+      dx = Math.max(0, mx);
+      card.style.transform = 'translateX(' + dx + 'px)';
+      wrap.classList.toggle('is-armed', dx > card.offsetWidth * SWIPE_FIRE);
+    });
+    function finish(e, allowFire) {
+      if (e.pointerId !== id) return;
+      id = null;
+      if (mode !== 'swipe') return;
+      var fire = allowFire && dx > card.offsetWidth * SWIPE_FIRE;
+      card.dataset.swipedAt = String(Date.now());
+      wrap.classList.remove('is-swiping', 'is-armed');
+      wrap.classList.add('is-settling');
+      card.style.transform = '';
+      setTimeout(function () { wrap.classList.remove('is-settling'); }, 280);
+      if (fire) toggleDoneToday(habit.id);
+    }
+    card.addEventListener('pointerup', function (e) { finish(e, true); });
+    card.addEventListener('pointercancel', function (e) { finish(e, false); });
+    return wrap;
+  }
+
+  // ---------- weekly recap (shown Sunday and Monday) ----------
+
+  function renderWeekRecap() {
+    var host = $('weekRecap');
+    var thisWeek = weekStartOf(new Date());
+    var start = addDays(thisWeek, -7);
+    var end = addDays(thisWeek, -1);
+    var weekKey = dateKey(start);
+    var dow = new Date().getDay();
+    var habits = activeHabits().filter(function (h) { return startOfDay(new Date(h.createdAt)) <= end; });
+    var stats = rangeStats(habits, start, end);
+    var show = (dow === 0 || dow === 1) && data.recapDismissed !== weekKey && stats.scheduled > 0;
+    host.classList.toggle('hidden', !show);
+    if (!show) return;
+
+    var prev = rangeStats(habits, addDays(start, -7), addDays(end, -7));
+    host.innerHTML = '';
+
+    var mark = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    mark.setAttribute('class', 'recap-mark');
+    mark.setAttribute('viewBox', '0 0 48 48');
+    mark.innerHTML = TALLY_PATHS;
+    host.appendChild(mark);
+
+    var close = el('button', 'wr-close');
+    close.type = 'button';
+    close.setAttribute('aria-label', 'Dismiss recap');
+    close.innerHTML = '<svg><use href="#sym-close"/></svg>';
+    close.addEventListener('click', function () {
+      data.recapDismissed = weekKey;
+      saveData();
+      host.classList.add('is-leaving');
+      setTimeout(function () { host.classList.remove('is-leaving'); host.classList.add('hidden'); }, 260);
+    });
+    host.appendChild(close);
+
+    host.appendChild(el('div', 'eyebrow', 'Your week · ' + formatDateNoYear(start) + ' – ' + formatDateNoYear(end)));
+    var num = el('div', 'recap-num', stats.done + ' of ' + stats.scheduled);
+    num.appendChild(el('small', '', 'done'));
+    host.appendChild(num);
+
+    var line = el('p', 'recap-text');
+    line.appendChild(el('b', '', stats.rate + '%'));
+    var cmp = ' of scheduled days';
+    if (prev.rate === null) cmp += '.';
+    else if (stats.rate > prev.rate) cmp += ', up from ' + prev.rate + '% the week before.';
+    else if (stats.rate < prev.rate) cmp += ', down from ' + prev.rate + '% the week before.';
+    else cmp += ', level with the week before.';
+    line.appendChild(document.createTextNode(cmp));
+    host.appendChild(line);
+
+    var rows = el('div', 'wr-rows');
+    var head = el('div', 'wr-row wr-head');
+    head.appendChild(el('span', 'wr-name'));
+    var letters = el('span', 'wr-dots');
+    for (var d = 0; d < 7; d++) letters.appendChild(el('i', '', DAY_LABELS[addDays(start, d).getDay()]));
+    head.appendChild(letters);
+    head.appendChild(el('span', 'wr-count'));
+    rows.appendChild(head);
+
+    var best = null, missed = [], bonus = [];
+    habits.forEach(function (habit) {
+      var set = {};
+      habit.completedDates.forEach(function (k) { set[k] = true; });
+      var created = startOfDay(new Date(habit.createdAt));
+      var row = el('div', 'wr-row');
+      row.appendChild(el('span', 'wr-name', habit.name));
+      var dots = el('span', 'wr-dots');
+      var missDays = [], bonusDays = [];
+      for (var i = 0; i < 7; i++) {
+        var day = addDays(start, i);
+        var key = dateKey(day);
+        var req = isRequired(habit, day, key);
+        var cls = 'd-none';
+        if (day >= created) {
+          if (set[key]) cls = req ? 'd-done' : 'd-bonus';
+          else if (req) { cls = 'd-miss'; missDays.push(DAY_NAMES_SHORT[day.getDay()]); }
+          else cls = 'd-rest';
+        }
+        if (set[key] && !req) bonusDays.push(DAY_NAMES[day.getDay()]);
+        dots.appendChild(el('i', cls));
+      }
+      row.appendChild(dots);
+      var hs = rangeStats([habit], start, end);
+      row.appendChild(el('span', 'wr-count', hs.scheduled ? hs.done + '/' + hs.scheduled : '–'));
+      rows.appendChild(row);
+      if (hs.scheduled && hs.done && (!best || hs.rate > best.rate || (hs.rate === best.rate && hs.done > best.done))) {
+        best = { name: habit.name, done: hs.done, scheduled: hs.scheduled, rate: hs.rate };
+      }
+      if (missDays.length) missed.push(habit.name + ' on ' + missDays.join(', '));
+      if (bonusDays.length) bonus.push(habit.name + ' on ' + bonusDays.join(', '));
+    });
+    host.appendChild(rows);
+
+    var notes = el('div', 'wr-notes');
+    if (best) notes.appendChild(el('p', '', 'Strongest: ' + best.name + ', ' + best.done + ' of ' + best.scheduled + '.'));
+    if (missed.length) {
+      var shown = missed.slice(0, 2).join('; ');
+      notes.appendChild(el('p', '', 'Missed: ' + shown + (missed.length > 2 ? '; and ' + (missed.length - 2) + ' more' : '') + '.'));
+    } else {
+      notes.appendChild(el('p', '', 'Not a single scheduled day missed.'));
+    }
+    if (bonus.length) notes.appendChild(el('p', '', 'Bonus: ' + bonus.join('; ') + '.'));
+    host.appendChild(notes);
   }
 
   function renderDayHead() {
@@ -664,7 +826,10 @@
     bottom.appendChild(dots);
     card.appendChild(bottom);
 
-    card.addEventListener('click', function () { goToScreen('detail', habit.id); });
+    card.addEventListener('click', function () {
+      if (Date.now() - Number(card.dataset.swipedAt || 0) < 400) return;
+      goToScreen('detail', habit.id);
+    });
     homeRefs[habit.id] = { card: card, check: check, num: num, meta: meta, dots: dots };
     return card;
   }

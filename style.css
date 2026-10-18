@@ -584,6 +584,70 @@ svg { display: block; }
   100% { transform: rotate(var(--a)) translateY(-34px) scale(0.4); opacity: 0; }
 }
 
+/* Swipe right to mark done. The wrapper owns the entrance animation so the
+   card's own transform is free to follow the finger. */
+.swipe-wrap {
+  position: relative;
+  border-radius: var(--r-l);
+  animation: cardIn var(--t-slow) var(--ease-out) both;
+  animation-delay: calc(var(--i, 0) * 35ms);
+}
+.swipe-wrap > .habit-card { height: 100%; animation: none; touch-action: pan-y; }
+.swipe-wrap.is-swiping > .habit-card { transition: none; }
+.swipe-wrap.is-settling > .habit-card { transition: transform 260ms var(--ease-spring), background var(--t-med), border-color var(--t-med); }
+.swipe-bg {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--r-l);
+  background: var(--flame-tint);
+  color: var(--flame-deep);
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding-left: 1.15rem;
+  font-weight: 600;
+  font-size: 0.95rem;
+  opacity: 0;
+  transition: background var(--t-fast), color var(--t-fast);
+}
+.swipe-bg svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; transition: transform var(--t-fast) var(--ease-spring); }
+.swipe-wrap.is-swiping .swipe-bg, .swipe-wrap.is-settling .swipe-bg { opacity: 1; }
+.swipe-wrap.is-armed .swipe-bg { background: var(--flame); color: #fff; }
+.swipe-wrap.is-armed .swipe-bg svg { transform: scale(1.18); }
+
+/* Weekly recap on Home */
+.week-recap { margin-bottom: 1.1rem; animation: cardIn var(--t-slow) var(--ease-out) both; transition: opacity 240ms, transform 240ms var(--ease-out); }
+.week-recap.is-leaving { opacity: 0; transform: translateY(-8px) scale(0.98); }
+.wr-close {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.wr-close svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; }
+.wr-close:active { background: rgba(255, 255, 255, 0.28); }
+.wr-rows { position: relative; margin-top: 1rem; display: flex; flex-direction: column; gap: 0.5rem; }
+.wr-row { display: flex; align-items: center; gap: 0.75rem; font-size: 0.88rem; }
+.wr-name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
+.wr-count { width: 2.4rem; text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; color: rgba(255, 255, 255, 0.9); }
+.wr-dots { display: flex; gap: 5px; }
+.wr-dots i { width: 10px; height: 10px; border-radius: 50%; display: block; font-style: normal; }
+.wr-head .wr-dots i { height: auto; font-size: 0.6rem; font-weight: 600; text-align: center; color: rgba(255, 255, 255, 0.7); }
+.wr-dots i.d-done { background: #fff; }
+.wr-dots i.d-bonus { background: #fff; box-shadow: 0 0 0 1.5px var(--flame), 0 0 0 3px rgba(255, 255, 255, 0.75); }
+.wr-dots i.d-miss { box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.6); }
+.wr-dots i.d-rest { background: rgba(255, 255, 255, 0.25); transform: scale(0.6); }
+.wr-notes { position: relative; margin-top: 0.95rem; display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.86rem; line-height: 1.45; color: rgba(255, 255, 255, 0.92); }
+
 /* Grid mode */
 .habit-list.grid-mode {
   display: grid;
