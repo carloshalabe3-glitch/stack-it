@@ -150,9 +150,32 @@
       <div class="stat"><div class="stat-num" id="detailRate">–</div><div class="stat-label">Last 30 days</div></div>
     </div>
 
-    <section class="card">
+    <div class="seg seg-3 detail-tabs" id="detailTabs" role="tablist">
+      <button class="seg-opt" data-tab="calendar" role="tab">Calendar</button>
+      <button class="seg-opt" data-tab="milestones" role="tab">Milestones</button>
+      <button class="seg-opt" data-tab="history" role="tab">History</button>
+      <span class="seg-thumb" aria-hidden="true"></span>
+    </div>
+
+    <section class="card detail-pane" data-pane="calendar">
+      <div class="cal-header">
+        <button class="cal-nav" id="calPrevBtn" aria-label="Previous month"><svg><use href="#sym-back"/></svg></button>
+        <span class="cal-month-label" id="calMonthLabel"></span>
+        <button class="cal-nav" id="calNextBtn" aria-label="Next month"><svg><use href="#sym-chev"/></svg></button>
+      </div>
+      <div class="cal-weekdays"><span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span></div>
+      <div class="cal-grid" id="calGrid"></div>
+      <div class="cal-legend">
+        <span><i class="lg lg-done"></i>Done</span>
+        <span><i class="lg lg-miss"></i>Missed</span>
+        <span><i class="lg lg-rest"></i>Rest day</span>
+        <span><i class="lg lg-off"></i>Time off</span>
+      </div>
+      <p class="field-hint">Tap a day to change it.</p>
+    </section>
+
+    <section class="card detail-pane hidden" data-pane="milestones">
       <div class="card-head">
-        <h3>Milestones</h3>
         <span class="card-head-note" id="milestoneNote"></span>
       </div>
       <div class="next-milestone" id="nextMilestone"></div>
@@ -167,29 +190,9 @@
       </details>
     </section>
 
-    <section class="card">
-      <div class="cal-header">
-        <button class="cal-nav" id="calPrevBtn" aria-label="Previous month"><svg><use href="#sym-back"/></svg></button>
-        <span class="cal-month-label" id="calMonthLabel"></span>
-        <button class="cal-nav" id="calNextBtn" aria-label="Next month"><svg><use href="#sym-chev"/></svg></button>
-      </div>
-      <div class="cal-weekdays"><span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span></div>
-      <div class="cal-grid" id="calGrid"></div>
-      <div class="cal-legend">
-        <span><i class="lg lg-done"></i>Done</span>
-        <span><i class="lg lg-miss"></i>Missed</span>
-        <span><i class="lg lg-rest"></i>Rest day</span>
-        <span><i class="lg lg-off"></i>Time off</span>
-      </div>
-      <p class="field-hint">Tap any day to mark it done or undo it — handy if you forgot to log one.</p>
-    </section>
-
-    <section class="card">
-      <div class="card-head">
-        <h3>History</h3>
-        <button class="text-btn text-btn-sm" id="historyToggleBtn"></button>
-      </div>
+    <section class="card detail-pane hidden" data-pane="history">
       <div id="historyList" class="row-list"></div>
+      <button class="text-btn text-btn-sm history-toggle" id="historyToggleBtn"></button>
     </section>
 
     <div class="danger-zone">

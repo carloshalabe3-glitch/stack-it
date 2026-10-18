@@ -434,6 +434,7 @@
   var state = {
     screen: 'home',
     lastTab: 'home',
+    detailTab: 'calendar',
     currentHabitId: null,
     editingHabitId: null,
     prefillHabit: null,
@@ -491,6 +492,16 @@
     segEl.dataset.index = String(index);
     var opts = segEl.querySelectorAll('.seg-opt');
     opts.forEach(function (o, i) { o.classList.toggle('is-active', i === index); });
+  }
+
+  var DETAIL_TABS = ['calendar', 'milestones', 'history'];
+
+  function showDetailTab(name) {
+    state.detailTab = name;
+    setSeg($('detailTabs'), DETAIL_TABS.indexOf(name));
+    document.querySelectorAll('#detailScreen .detail-pane').forEach(function (p) {
+      p.classList.toggle('hidden', p.dataset.pane !== name);
+    });
   }
 
   // ---------- home ----------
@@ -955,6 +966,7 @@
     renderMilestones(habit, cur);
     renderCalendar(habit);
     renderHistory(habit);
+    showDetailTab(state.detailTab);
   }
 
   function renderMilestones(habit, cur) {
@@ -2093,6 +2105,11 @@
     $('cardCloseBtn').addEventListener('click', function () { closeSheet('cardSheet'); });
     $('addMilestoneBtn').addEventListener('click', function () { addCustomMilestone(state.currentHabitId); });
     $('newMilestoneLabelInput').addEventListener('keydown', function (e) { if (e.key === 'Enter') addCustomMilestone(state.currentHabitId); });
+    $('detailTabs').querySelectorAll('.seg-opt').forEach(function (opt) {
+      opt.addEventListener('click', function () {
+        if (state.detailTab !== opt.dataset.tab) showDetailTab(opt.dataset.tab);
+      });
+    });
     $('historyToggleBtn').addEventListener('click', function () {
       state.historyExpanded = !state.historyExpanded;
       renderHistory(findHabit(state.currentHabitId));
