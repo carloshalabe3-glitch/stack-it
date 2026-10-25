@@ -1853,7 +1853,8 @@
       resyncMilestonesHit(habit);
       saveData();
       closeHabitSheet();
-      goToScreen('detail', habit.id);
+      if (state.screen === 'detail') renderDetail(habit.id);
+      else goToScreen(state.screen);
       showToast('Saved');
     } else {
       var newHabit = {
