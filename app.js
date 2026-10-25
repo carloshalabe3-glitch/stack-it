@@ -454,14 +454,16 @@
 
   var SCREEN_IDS = { home: 'homeScreen', detail: 'detailScreen', insights: 'insightsScreen', settings: 'settingsScreen' };
 
-  function showScreenEl(name) {
+  function showScreenEl(name, anim) {
     Object.keys(SCREEN_IDS).forEach(function (key) {
       var node = $(SCREEN_IDS[key]);
       var active = key === name;
+      node.classList.remove('anim-push', 'anim-pop');
       if (active) {
         // Restart the entrance animation even if the class is already there.
         node.classList.remove('is-active');
         void node.offsetWidth;
+        if (anim) node.classList.add(anim);
         node.classList.add('is-active');
       } else {
         node.classList.remove('is-active');
@@ -474,6 +476,7 @@
     document.querySelectorAll('.tab').forEach(function (t) { t.classList.toggle('is-active', t.dataset.tab === name); });
     moveTabLens();
     window.scrollTo(0, 0);
+    updateCompactBars();
   }
 
   function moveTabLens() {
@@ -484,18 +487,189 @@
     lens.style.transform = 'translateX(' + active.offsetLeft + 'px)';
   }
 
-  function goToScreen(name, habitId) {
+  // Opening a habit adds a history entry so Safari's own swipe-back works;
+  // leaving it any other way pops that entry so history stays in step.
+  var ignoreNextPop = false;
+
+  function goToScreen(name, habitId, fromHistory) {
+    var prev = state.screen;
     if (name !== 'detail') state.lastTab = name;
     state.screen = name;
     if (habitId) {
       if (habitId !== state.currentHabitId) { state.calendarOffset = 0; state.historyExpanded = false; }
       state.currentHabitId = habitId;
     }
+    if (!fromHistory) {
+      if (name === 'detail' && prev !== 'detail') history.pushState({ detail: true }, '');
+      else if (prev === 'detail' && name !== 'detail' && history.state && history.state.detail) { ignoreNextPop = true; history.back(); }
+    }
     if (name === 'home') renderHome();
     else if (name === 'detail') renderDetail(state.currentHabitId);
     else if (name === 'insights') renderInsights();
     else if (name === 'settings') renderSettings();
-    showScreenEl(name);
+    showScreenEl(name, name === 'detail' && prev !== 'detail' ? 'anim-push' : prev === 'detail' && name !== 'detail' ? 'anim-pop' : '');
+  }
+
+  function leaveDetail() { goToScreen(state.lastTab || 'home'); }
+
+  window.addEventListener('popstate', function () {
+    if (ignoreNextPop) { ignoreNextPop = false; return; }
+    if (state.screen === 'detail') goToScreen(state.lastTab || 'home', null, true);
+  });
+
+  // The installed home-screen app has no browser swipe-back, so drag from the left edge here.
+  function wireEdgeSwipe() {
+    if (!window.navigator.standalone) return;
+    var screen = $('detailScreen');
+    var tracking = false, locked = false, startX = 0, startY = 0, dx = 0;
+    screen.addEventListener('touchstart', function (e) {
+      if (state.screen !== 'detail' || e.touches[0].clientX > 22) return;
+      tracking = true; locked = false; dx = 0;
+      startX = e.touches[0].clientX; startY = e.touches[0].clientY;
+    }, { passive: true });
+    screen.addEventListener('touchmove', function (e) {
+      if (!tracking) return;
+      var mx = e.touches[0].clientX - startX, my = e.touches[0].clientY - startY;
+      if (!locked) {
+        if (Math.abs(mx) < 6 && Math.abs(my) < 6) return;
+        if (Math.abs(my) > Math.abs(mx)) { tracking = false; return; }
+        locked = true;
+        screen.classList.add('is-dragging');
+      }
+      e.preventDefault();
+      dx = Math.max(0, mx);
+      screen.style.transform = 'translateX(' + dx + 'px)';
+    }, { passive: false });
+    function end() {
+      if (!tracking) return;
+      tracking = false;
+      if (!locked) return;
+      screen.classList.remove('is-dragging');
+      if (dx > screen.offsetWidth * 0.33) {
+        screen.classList.add('is-leaving');
+        screen.style.transform = 'translateX(100%)';
+        setTimeout(function () {
+          screen.classList.remove('is-leaving');
+          screen.style.transform = '';
+          leaveDetail();
+        }, 250);
+      } else {
+        screen.classList.add('is-settling');
+        screen.style.transform = '';
+        setTimeout(function () { screen.classList.remove('is-settling'); }, 280);
+      }
+    }
+    screen.addEventListener('touchend', end);
+    screen.addEventListener('touchcancel', end);
+  }
+
+  // Large titles shrink into a glass bar once the page scrolls.
+  var compactQueued = false;
+  function updateCompactBars() {
+    compactQueued = false;
+    var screenEl = $(SCREEN_IDS[state.screen]);
+    var bar = screenEl && screenEl.querySelector('.topbar');
+    if (!bar) return;
+    var threshold = state.screen === 'detail' ? 150 : 12;
+    bar.classList.toggle('is-compact', window.scrollY > threshold);
+  }
+  window.addEventListener('scroll', function () {
+    if (!compactQueued) { compactQueued = true; requestAnimationFrame(updateCompactBars); }
+  }, { passive: true });
+
+  // Text follows the iPhone's text-size setting: Apple's body text is 17px at
+  // the default size, which maps to this app's 16px; scaled and capped.
+  function applyTextSize() {
+    if (!window.CSS || !CSS.supports('font', '-apple-system-body')) return;
+    var probe = document.createElement('div');
+    probe.style.cssText = 'font: -apple-system-body; position: absolute; visibility: hidden;';
+    document.body.appendChild(probe);
+    var px = parseFloat(getComputedStyle(probe).fontSize);
+    probe.remove();
+    if (!px) return;
+    var size = Math.min(21, Math.max(14, 16 * px / 17));
+    document.documentElement.style.fontSize = size + 'px';
+  }
+
+  function archiveHabit(habit) {
+    openConfirm('Archive ' + habit.name + '?', 'It leaves your list but keeps every day you logged. Bring it back any time from Settings.', 'Archive', function () {
+      habit.archived = true;
+      saveData();
+      closeConfirm();
+      if (state.screen === 'detail') leaveDetail();
+      else goToScreen(state.screen);
+      showToast('Archived ' + habit.name, { action: 'Undo', onAction: function () {
+        habit.archived = false;
+        saveData();
+        if (state.screen === 'home') renderHome();
+        else if (state.screen === 'settings') renderSettings();
+        else if (state.screen === 'insights') renderInsights();
+      } });
+    });
+  }
+
+  // ---------- press-and-hold menu ----------
+
+  var MENU_ICONS = {
+    check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+    undo: '<path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 010 11H11"/>',
+    edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/>',
+    share: '<path d="M12 3v12M8 7l4-4 4 4"/><path d="M5 12v7a1 1 0 001 1h12a1 1 0 001-1v-7"/>',
+    archive: '<rect x="3" y="4" width="18" height="5" rx="1"/><path d="M5 9v10a1 1 0 001 1h12a1 1 0 001-1V9"/><path d="M10 13h4"/>'
+  };
+
+  function openHabitMenu(habit, card) {
+    var done = isDoneToday(habit);
+    var items = [
+      { label: done ? 'Undo today' : 'Mark done today', icon: done ? 'undo' : 'check', run: function () { toggleDoneToday(habit.id); } },
+      { label: 'Edit', icon: 'edit', run: function () { openHabitSheet(habit.id); } },
+      { label: 'Share streak card', icon: 'share', run: function () { openStreakCard(habit.id); } },
+      { label: 'Archive', icon: 'archive', destructive: true, run: function () { archiveHabit(habit); } }
+    ];
+    var rect = card.getBoundingClientRect();
+    var backdrop = el('div', 'ctx-backdrop');
+    var preview = card.cloneNode(true);
+    preview.classList.add('ctx-preview');
+    preview.style.left = rect.left + 'px';
+    preview.style.top = rect.top + 'px';
+    preview.style.width = rect.width + 'px';
+    preview.style.height = rect.height + 'px';
+    preview.style.margin = '0';
+    backdrop.appendChild(preview);
+
+    var menu = el('div', 'ctx-menu');
+    menu.setAttribute('role', 'menu');
+    items.forEach(function (item) {
+      var b = el('button', 'ctx-item' + (item.destructive ? ' is-destructive' : ''));
+      b.type = 'button';
+      b.setAttribute('role', 'menuitem');
+      b.appendChild(el('span', '', item.label));
+      b.insertAdjacentHTML('beforeend', '<svg viewBox="0 0 24 24">' + MENU_ICONS[item.icon] + '</svg>');
+      b.addEventListener('click', function (e) {
+        e.stopPropagation();
+        close();
+        setTimeout(item.run, 120);
+      });
+      menu.appendChild(b);
+    });
+    backdrop.appendChild(menu);
+    document.body.appendChild(backdrop);
+
+    var menuH = menu.offsetHeight;
+    var below = rect.bottom + 12 + menuH < window.innerHeight - 16;
+    menu.style.left = Math.max(12, Math.min(rect.left, window.innerWidth - menu.offsetWidth - 12)) + 'px';
+    menu.style.top = (below ? rect.bottom + 12 : Math.max(12, rect.top - menuH - 12)) + 'px';
+    menu.style.transformOrigin = below ? 'top left' : 'bottom left';
+    requestAnimationFrame(function () { backdrop.classList.add('is-open'); });
+
+    function close() {
+      backdrop.classList.remove('is-open');
+      document.removeEventListener('keydown', onKey);
+      setTimeout(function () { backdrop.remove(); }, 220);
+    }
+    function onKey(e) { if (e.key === 'Escape') close(); }
+    backdrop.addEventListener('click', close);
+    document.addEventListener('keydown', onKey);
   }
 
   function setSeg(segEl, index) {
@@ -593,16 +767,25 @@
     wrap.appendChild(bg);
     wrap.appendChild(card);
 
-    var id = null, startX = 0, startY = 0, dx = 0, mode = null;
+    var id = null, startX = 0, startY = 0, dx = 0, mode = null, holdTimer = null;
     card.addEventListener('pointerdown', function (e) {
       if (e.button !== 0 || e.target.closest('.check-btn')) return;
+      delete card.dataset.longPressed;
       id = e.pointerId; startX = e.clientX; startY = e.clientY; dx = 0; mode = null;
+      clearTimeout(holdTimer);
+      holdTimer = setTimeout(function () {
+        if (mode) return;
+        id = null;
+        card.dataset.longPressed = '1';
+        openHabitMenu(habit, card);
+      }, 480);
     });
     card.addEventListener('pointermove', function (e) {
       if (e.pointerId !== id) return;
       var mx = e.clientX - startX, my = e.clientY - startY;
       if (!mode) {
         if (Math.abs(mx) < 8 && Math.abs(my) < 8) return;
+        clearTimeout(holdTimer);
         mode = mx > 0 && Math.abs(mx) > Math.abs(my) ? 'swipe' : 'scroll';
         if (mode === 'swipe') {
           card.setPointerCapture(id);
@@ -616,6 +799,7 @@
       wrap.classList.toggle('is-armed', dx > card.offsetWidth * SWIPE_FIRE);
     });
     function finish(e, allowFire) {
+      clearTimeout(holdTimer);
       if (e.pointerId !== id) return;
       id = null;
       if (mode !== 'swipe') return;
@@ -627,6 +811,7 @@
       setTimeout(function () { wrap.classList.remove('is-settling'); }, 280);
       if (fire) toggleDoneToday(habit.id);
     }
+    card.addEventListener('contextmenu', function (e) { e.preventDefault(); });
     card.addEventListener('pointerup', function (e) { finish(e, true); });
     card.addEventListener('pointercancel', function (e) { finish(e, false); });
     return wrap;
@@ -856,6 +1041,7 @@
     card.appendChild(bottom);
 
     card.addEventListener('click', function () {
+      if (card.dataset.longPressed) { delete card.dataset.longPressed; return; }
       if (Date.now() - Number(card.dataset.swipedAt || 0) < 400) return;
       goToScreen('detail', habit.id);
     });
@@ -929,7 +1115,7 @@
     var habit = findHabit(habitId);
     if (!habit) { goToScreen('home'); return; }
 
-    $('detailTopTitle').textContent = '';
+    $('detailTopTitle').textContent = habit.name;
     var iconHost = $('detailIcon');
     var newIcon = makeIconEl(habit, 'hero-icon');
     newIcon.id = 'detailIcon';
@@ -2070,6 +2256,9 @@
   function wire() {
     // iOS Safari only shows :active press states when a touch listener exists.
     document.addEventListener('touchstart', function () {}, { passive: true });
+    applyTextSize();
+    document.addEventListener('visibilitychange', function () { if (!document.hidden) applyTextSize(); });
+    wireEdgeSwipe();
     window.addEventListener('resize', moveTabLens);
     if (document.fonts) document.fonts.ready.then(moveTabLens);
     document.querySelector('#markDoneBtn .btn-check').innerHTML = CHECK_SVG;
@@ -2109,7 +2298,7 @@
       });
     });
 
-    $('detailBackBtn').addEventListener('click', function () { goToScreen(state.lastTab || 'home'); });
+    $('detailBackBtn').addEventListener('click', leaveDetail);
     $('detailEditBtn').addEventListener('click', function () { openHabitSheet(state.currentHabitId); });
     $('markDoneBtn').addEventListener('click', function () {
       var btn = $('markDoneBtn');
@@ -2149,22 +2338,7 @@
       if (!cell) return;
       toggleDoneOnDate(state.currentHabitId, cell.dataset.key);
     });
-    $('archiveBtn').addEventListener('click', function () {
-      var habit = findHabit(state.currentHabitId);
-      openConfirm('Archive ' + habit.name + '?', 'It leaves your list but keeps every day you logged. Bring it back any time from Settings.', 'Archive', function () {
-        habit.archived = true;
-        saveData();
-        closeConfirm();
-        goToScreen(state.lastTab || 'home');
-        showToast('Archived ' + habit.name, { action: 'Undo', onAction: function () {
-          habit.archived = false;
-          saveData();
-          if (state.screen === 'home') renderHome();
-          else if (state.screen === 'settings') renderSettings();
-          else if (state.screen === 'insights') renderInsights();
-        } });
-      });
-    });
+    $('archiveBtn').addEventListener('click', function () { archiveHabit(findHabit(state.currentHabitId)); });
     $('deleteBtn').addEventListener('click', function () {
       var habit = findHabit(state.currentHabitId);
       openConfirm('Delete ' + habit.name + '?', 'This erases the habit and all ' + plural(habit.completedDates.length, 'logged day') + ' for good. Archiving keeps the history if you might want it later.', 'Delete', function () {
