@@ -35,6 +35,7 @@
   };
 
   var CHECK_SVG = '<svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+  var CARD_FONT = '-apple-system, BlinkMacSystemFont, system-ui, "Segoe UI", Roboto, sans-serif';
   var TALLY_PATHS = '<path d="M12 10v28"/><path d="M20 10v28"/><path d="M28 10v28"/><path d="M36 10v28"/><path d="M8 32L40 16"/>';
 
   var QUICK_PICKS = [
@@ -1745,7 +1746,7 @@
       ctx.fillStyle = '#FFFFFF';
       ctx.textAlign = 'left';
       ctx.textBaseline = 'alphabetic';
-      ctx.font = '700 40px "Space Grotesk"';
+      ctx.font = '700 40px ' + CARD_FONT;
       ctx.fillText('Stack it', 190, 137);
 
       // Icon badge.
@@ -1759,14 +1760,14 @@
       } else {
         ctx.fillStyle = '#FFFFFF';
         ctx.textAlign = 'center';
-        ctx.font = '700 84px "Space Grotesk"';
+        ctx.font = '700 84px ' + CARD_FONT;
         ctx.fillText((habit.name || '?').trim().charAt(0).toUpperCase(), size / 2, cy + 30);
       }
 
       // Habit name.
       ctx.fillStyle = '#FFFFFF';
       ctx.textAlign = 'center';
-      ctx.font = '600 46px "Work Sans"';
+      ctx.font = '600 46px ' + CARD_FONT;
       var name = habit.name;
       while (ctx.measureText(name).width > 900 && name.length > 3) name = name.slice(0, -2);
       if (name !== habit.name) name = name.trim() + '…';
@@ -1778,15 +1779,15 @@
       var numSize = 320;
       if (numText.length >= 4) numSize = 220;
       else if (numText.length === 3) numSize = 270;
-      ctx.font = '700 ' + numSize + 'px "Space Grotesk"';
+      ctx.font = '700 ' + numSize + 'px ' + CARD_FONT;
       ctx.fillText(numText, size / 2, 780);
 
-      ctx.font = '500 44px "Work Sans"';
+      ctx.font = '500 44px ' + CARD_FONT;
       ctx.fillStyle = 'rgba(255,255,255,0.92)';
       ctx.fillText(cur === 1 ? 'day streak' : 'day streak', size / 2, 850);
 
       // Footer line.
-      ctx.font = '500 30px "Work Sans"';
+      ctx.font = '500 30px ' + CARD_FONT;
       ctx.fillStyle = '#FBDCCE';
       var footer = cur > 0 ? 'Since ' + formatDateShort(currentStreakStartKey(habit)) + '  ·  Best ' + bestStreak(habit) + ' days' : 'Best ' + bestStreak(habit) + ' days  ·  ' + formatDateShort(todayKey());
       ctx.fillText(footer, size / 2, 980);
