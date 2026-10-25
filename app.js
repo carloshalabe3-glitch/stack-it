@@ -471,7 +471,16 @@
     document.querySelector('.app').classList.toggle('no-tabbar', isDetail);
     $('toast').classList.toggle('no-tabbar', isDetail);
     document.querySelectorAll('.tab').forEach(function (t) { t.classList.toggle('is-active', t.dataset.tab === name); });
+    moveTabLens();
     window.scrollTo(0, 0);
+  }
+
+  function moveTabLens() {
+    var active = document.querySelector('.tab.is-active');
+    if (!active) return;
+    var lens = $('tabLens');
+    lens.style.width = active.offsetWidth + 'px';
+    lens.style.transform = 'translateX(' + active.offsetLeft + 'px)';
   }
 
   function goToScreen(name, habitId) {
@@ -489,6 +498,14 @@
   }
 
   function setSeg(segEl, index) {
+    if (segEl.dataset.index !== undefined && segEl.dataset.index !== String(index)) {
+      // The glass thumb stretches while it slides, then settles.
+      segEl.classList.remove('is-moving');
+      void segEl.offsetWidth;
+      segEl.classList.add('is-moving');
+      clearTimeout(segEl.moveTimer);
+      segEl.moveTimer = setTimeout(function () { segEl.classList.remove('is-moving'); }, 320);
+    }
     segEl.dataset.index = String(index);
     var opts = segEl.querySelectorAll('.seg-opt');
     opts.forEach(function (o, i) { o.classList.toggle('is-active', i === index); });
@@ -2050,6 +2067,10 @@
   // ---------- wiring ----------
 
   function wire() {
+    // iOS Safari only shows :active press states when a touch listener exists.
+    document.addEventListener('touchstart', function () {}, { passive: true });
+    window.addEventListener('resize', moveTabLens);
+    if (document.fonts) document.fonts.ready.then(moveTabLens);
     document.querySelector('#markDoneBtn .btn-check').innerHTML = CHECK_SVG;
     document.querySelectorAll('svg.tally-anim').forEach(function (svg) {
       svg.setAttribute('viewBox', '0 0 48 48');
