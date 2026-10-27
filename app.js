@@ -1118,6 +1118,7 @@
     var circumference = 125.66;
     var pct = total ? done / total : 0;
     ring.classList.toggle('is-complete', total > 0 && done === total);
+    paintBrandMark(total === 0 || done === total);
 
     if (activeHabits().length === 0) {
       status.textContent = 'A clean slate';
@@ -1145,6 +1146,21 @@
     }
     // Let the ring animate from its previous value.
     requestAnimationFrame(function () { fill.style.strokeDashoffset = String(circumference * (1 - pct)); });
+  }
+
+  // The header tally's slash is today's payoff: it only lands once every habit
+  // due today is done, and finishing the last one draws it in with a little pop.
+  var brandComplete = null;
+
+  function paintBrandMark(complete) {
+    var mark = $('brandMark');
+    mark.classList.toggle('is-complete', complete);
+    if (brandComplete === false && complete) {
+      mark.classList.remove('is-payoff');
+      void mark.getBoundingClientRect();
+      mark.classList.add('is-payoff');
+    }
+    brandComplete = complete;
   }
 
   function weekDots(habit) {
@@ -2571,6 +2587,7 @@
   data.habits.forEach(resyncMilestonesHit);
   saveData();
   goToScreen('home');
+  setTimeout(function () { $('brandMark').classList.remove('is-intro'); }, 950);
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', function () {

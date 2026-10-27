@@ -54,7 +54,18 @@
   <div class="shell">
     <header class="topbar">
       <div class="brand">
-        <svg class="brand-mark" aria-hidden="true"><use href="#sym-tally"/></svg>
+        <svg class="brand-mark brand-draw is-intro" id="brandMark" viewBox="0 0 48 48" aria-hidden="true">
+          <defs>
+            <linearGradient id="brandGrad" gradientUnits="userSpaceOnUse" x1="10" y1="8" x2="38" y2="40">
+              <stop offset="0" class="bg-top"/><stop offset="0.55" class="bg-mid"/><stop offset="1" class="bg-end"/>
+            </linearGradient>
+          </defs>
+          <g class="bd-group">
+            <path class="bd-stroke" d="M12 10v28"/><path class="bd-stroke" d="M20 10v28"/><path class="bd-stroke" d="M28 10v28"/><path class="bd-stroke" d="M36 10v28"/>
+            <path class="bd-ghost" d="M8 32L40 16"/>
+            <path class="bd-slash" d="M8 32L40 16"/>
+          </g>
+        </svg>
         <h1>Stack it</h1>
       </div>
       <div class="topbar-actions">

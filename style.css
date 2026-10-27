@@ -297,6 +297,28 @@ svg { display: block; }
 
 .brand-mark { width: 26px; height: 26px; color: var(--flame); stroke-width: 4; }
 
+/* Header tally: draws itself on launch; the slash is today's payoff and only
+   lands once every habit due today is done. */
+.bg-top { stop-color: #FA9450; }
+.bg-mid { stop-color: var(--flame); }
+.bg-end { stop-color: var(--flame-deep); }
+.brand-draw path { stroke: url(#brandGrad); stroke-dasharray: 44; stroke-dashoffset: 0; }
+.brand-draw.is-intro .bd-stroke { animation: bdDraw 320ms var(--ease-out) backwards; }
+.brand-draw.is-intro .bd-stroke:nth-child(2) { animation-delay: 90ms; }
+.brand-draw.is-intro .bd-stroke:nth-child(3) { animation-delay: 180ms; }
+.brand-draw.is-intro .bd-stroke:nth-child(4) { animation-delay: 270ms; }
+.brand-draw .bd-slash { stroke-dashoffset: 44; transition: stroke-dashoffset 480ms var(--ease-out); }
+.brand-draw.is-complete .bd-slash { stroke-dashoffset: 0; }
+.brand-draw.is-intro.is-complete .bd-slash { animation: bdDraw 300ms 560ms var(--ease-out) backwards; transition: none; }
+.brand-draw .bd-ghost { stroke-dasharray: 3.5 3; stroke-width: 2.4; stroke-linecap: butt; opacity: 0.45; transition: opacity 300ms ease; }
+.brand-draw.is-complete .bd-ghost { opacity: 0; }
+.brand-draw.is-intro .bd-ghost { animation: bdFade 300ms 560ms ease backwards; }
+.bd-group { transform-box: fill-box; transform-origin: center; }
+.brand-draw.is-payoff .bd-group { animation: bdPop 640ms var(--ease-out); }
+@keyframes bdDraw { from { stroke-dashoffset: 44; } }
+@keyframes bdFade { from { opacity: 0; } }
+@keyframes bdPop { 0% { transform: scale(1); } 45% { transform: scale(1.22) rotate(-4deg); } 100% { transform: scale(1); } }
+
 .topbar h1 {
   font-family: var(--display);
   font-weight: 700;
@@ -1611,6 +1633,8 @@ svg { display: block; }
     --glass-shine: inset 0 1px 0 rgba(255, 255, 255, 0.14), inset 0 -1px 1px rgba(255, 255, 255, 0.04), inset 0 0 0 1px rgba(255, 255, 255, 0.07);
     --glass-drop: 0 10px 30px -12px rgba(0, 0, 0, 0.7), 0 2px 6px -2px rgba(0, 0, 0, 0.4);
   }
+  .bg-top { stop-color: #F9A672; }
+  .bg-end { stop-color: #C8401C; }
   .tab-lens { background: rgba(255, 255, 255, 0.13); box-shadow: var(--glass-shine), 0 4px 14px -6px rgba(0, 0, 0, 0.6); }
   .seg { background: rgba(42, 35, 32, 0.6); box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.35), inset 0 0 0 1px rgba(255, 255, 255, 0.05); }
   .seg-thumb { background: rgba(255, 255, 255, 0.14); box-shadow: var(--glass-shine), 0 4px 12px -5px rgba(0, 0, 0, 0.6); }
