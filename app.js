@@ -49,27 +49,32 @@
 
   // ---------- milestones ----------
 
-  var MILESTONES = [
-    { key: '1d', days: 1, title: '1 day streak' },
-    { key: '3d', days: 3, title: '3 day streak' },
-    { key: '1w', days: 7, title: '1 week streak' },
-    { key: '2w', days: 14, title: '2 week streak' },
-    { key: '1mo', days: 30, title: '1 month streak' },
-    { key: '3mo', days: 91, title: '3 month streak' },
-    { key: '6mo', days: 182, title: '6 month streak' },
-    { key: '1y', days: 365, title: '1 year streak' }
-  ];
+  // Built-in milestones: two weeks, then every month for as long as the streak runs.
+  var MONTH_DAYS = 30.44;
 
   var MILESTONE_LINES = {
-    1: 'The first one is the hardest. You just did it.',
-    3: 'Three in a row. This is how it starts.',
-    7: 'A full week. The habit is starting to take.',
     14: "Two weeks. It's getting easier to keep than to drop.",
     30: "A month. This isn't a phase anymore.",
+    61: 'Two months. This is just what you do now.',
     91: 'A quarter of a year. Most people never get here.',
-    182: 'Half a year. Quietly remarkable.',
+    183: 'Half a year. Quietly remarkable.',
     365: 'A year of showing up. This is who you are now.'
   };
+
+  function monthMilestoneTitle(n) {
+    if (n % 12 === 0) return (n / 12) + ' year streak';
+    return n + ' month streak';
+  }
+
+  function builtInMilestones(habit) {
+    var list = [{ key: '2w', days: 14, title: '2 week streak' }];
+    // At least up to three months, and always one month still ahead.
+    var cur = currentStreak(habit);
+    for (var n = 1; n <= 3 || list[list.length - 1].days <= cur; n++) {
+      list.push({ key: n + 'mo', days: Math.round(n * MONTH_DAYS), title: monthMilestoneTitle(n) });
+    }
+    return list;
+  }
 
   // ---------- quotes ----------
 
@@ -134,7 +139,7 @@
   }
 
   function habitMilestones(habit) {
-    return MILESTONES.concat(habit.customMilestones.map(function (m) {
+    return builtInMilestones(habit).concat(habit.customMilestones.map(function (m) {
       return { key: 'custom_' + m.id, days: m.days, title: m.label || milestoneDefaultTitle(m.days), custom: true, id: m.id };
     }));
   }
@@ -2333,7 +2338,7 @@
     var next = state.milestoneQueue.shift();
     $('milestoneHabitName').textContent = next.habitName;
     $('milestoneTitle').textContent = next.title;
-    $('milestoneSub').textContent = next.custom ? 'Your own target, reached. Set the next one.' : (MILESTONE_LINES[next.days] || 'Keep it up. This one counts.');
+    $('milestoneSub').textContent = next.custom ? 'Your own target, reached. Set the next one.' : (MILESTONE_LINES[next.days] || 'Another month on the stack.');
     var mark = document.querySelector('.milestone-mark');
     mark.innerHTML = TALLY_PATHS;
     var bd = $('milestoneBackdrop');
