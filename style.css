@@ -116,9 +116,28 @@ svg { display: block; }
 /* iOS-style navigation: a habit slides in from the right, going back slides in from the left. */
 .screen.is-active.anim-push { animation: screenPush 420ms cubic-bezier(0.2, 0.9, 0.25, 1) backwards; }
 .screen.is-active.anim-pop { animation: screenPop 380ms cubic-bezier(0.2, 0.9, 0.25, 1) backwards; }
-.screen.is-dragging, .screen.is-settling, .screen.is-leaving { animation: none; }
-.screen.is-dragging { box-shadow: -14px 0 32px -12px rgba(0, 0, 0, 0.25); }
+.screen.is-dragging, .screen.is-settling, .screen.is-leaving { animation: none; position: relative; z-index: 1; background: var(--bg); box-shadow: -14px 0 32px -12px rgba(0, 0, 0, 0.3); will-change: transform; }
 .screen.is-settling, .screen.is-leaving { transition: transform 260ms cubic-bezier(0.2, 0.9, 0.25, 1); }
+
+/* The screen you're returning to, drawn underneath during an edge swipe. */
+.screen.is-under {
+  display: flex;
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  padding-top: env(safe-area-inset-top);
+  background: var(--bg);
+  will-change: transform;
+}
+.screen.is-under::after { content: ''; position: absolute; inset: 0; background: #000; opacity: var(--shade, 0); pointer-events: none; }
+.screen.is-under.is-settling, .screen.is-under.is-leaving { transition: transform 260ms cubic-bezier(0.2, 0.9, 0.25, 1); }
+.screen.is-under.is-settling::after, .screen.is-under.is-leaving::after { transition: opacity 260ms; }
+
+/* Returning to a list doesn't replay its entrance animations. */
+.app.instant .screen, .app.instant .swipe-wrap, .app.instant .week-recap, .app.instant .empty-state, .app.instant .detail-pane { animation: none !important; }
+.app.returning .swipe-wrap, .app.returning .week-recap, .app.returning .empty-state { animation: none; }
 
 @keyframes screenIn {
   from { opacity: 0; transform: translateY(6px); }
@@ -1645,8 +1664,8 @@ svg { display: block; }
   transition: opacity 200ms;
 }
 .ctx-backdrop.is-open { opacity: 1; }
-.ctx-preview { position: fixed; pointer-events: none; transform-origin: center; transition: transform 300ms cubic-bezier(0.22, 1.5, 0.36, 1); box-shadow: 0 24px 50px -18px rgba(0, 0, 0, 0.45); border-radius: var(--r-l); }
-.ctx-backdrop.is-open .ctx-preview { transform: scale(1.03); }
+.ctx-preview { position: fixed; pointer-events: none; transform-origin: top center; transition: transform 340ms cubic-bezier(0.22, 1.25, 0.36, 1); box-shadow: 0 24px 50px -18px rgba(0, 0, 0, 0.45); border-radius: var(--r-l); }
+.ctx-preview > .habit-card { margin: 0; animation: none; }
 .ctx-menu {
   position: fixed;
   min-width: 220px;
@@ -1658,8 +1677,8 @@ svg { display: block; }
   box-shadow: var(--glass-shine), 0 18px 44px -14px rgba(0, 0, 0, 0.4);
   transform: scale(0.6);
   opacity: 0;
-  transform-origin: top left;
-  transition: transform 300ms cubic-bezier(0.22, 1.4, 0.36, 1), opacity 160ms;
+  transform-origin: top center;
+  transition: transform 300ms 40ms cubic-bezier(0.22, 1.4, 0.36, 1), opacity 160ms 40ms;
 }
 .ctx-backdrop.is-open .ctx-menu { transform: none; opacity: 1; }
 .ctx-item {
