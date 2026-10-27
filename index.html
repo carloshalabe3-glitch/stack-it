@@ -86,6 +86,11 @@
         <span class="seg-thumb" aria-hidden="true"></span>
       </div>
 
+      <p class="home-tip field-hint hidden" id="homeTip">Swipe a habit right to mark it done. Hold it for more.</p>
+      <div class="reorder-bar hidden" id="reorderBar">
+        <span>Drag habits into the order you want.</span>
+        <button class="btn btn-sm btn-primary" id="reorderDoneBtn">Done</button>
+      </div>
       <div id="habitList" class="habit-list"></div>
 
       <div id="emptyState" class="empty-state hidden">
@@ -172,7 +177,7 @@
         <span><i class="lg lg-rest"></i>Rest day</span>
         <span><i class="lg lg-off"></i>Time off</span>
       </div>
-      <p class="field-hint">Tap a day to change it.</p>
+      <p class="field-hint" id="calTip">Tap a day to change it.</p>
     </section>
 
     <section class="card detail-pane hidden" data-pane="milestones">

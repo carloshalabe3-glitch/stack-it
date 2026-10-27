@@ -1701,6 +1701,21 @@ svg { display: block; }
 .ctx-item svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
 .ctx-item.is-destructive { color: #E5484D; }
 
+.home-tip { margin: -0.4rem 0 0.75rem; text-align: center; }
+
+/* Reorder mode */
+.reorder-bar { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; margin-bottom: 0.9rem; font-size: 0.9rem; color: var(--ink-soft); }
+.hc-grip { display: none; width: 46px; height: 46px; align-items: center; justify-content: center; color: var(--ink-mute); flex-shrink: 0; }
+.hc-grip svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+.habit-list.is-reordering .check-btn { display: none; }
+.habit-list.is-reordering .hc-grip { display: flex; }
+.grid-mode .hc-grip { grid-area: check; width: 40px; height: 40px; }
+.habit-list.is-reordering .habit-card { touch-action: none; cursor: grab; }
+.habit-list.is-reordering .habit-card:active { transform: none; }
+.reorder-slot { border-radius: var(--r-l); border: 1.5px dashed var(--line-strong); background: var(--surface); }
+.swipe-wrap.is-lifted { position: fixed; z-index: 55; pointer-events: none; animation: none; }
+.swipe-wrap.is-lifted .habit-card { transform: scale(1.03); box-shadow: 0 22px 44px -16px rgba(0, 0, 0, 0.35); transition: transform 200ms cubic-bezier(0.3, 1.35, 0.5, 1); }
+
 /* Counts keep a steady width as they change, like the numbers in Apple's apps. */
 .hc-num, .hero-streak, .stat-num, .recap-num, .ring-label { font-variant-numeric: tabular-nums; }
 

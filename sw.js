@@ -1,4 +1,4 @@
-var CACHE_NAME = 'stack-it-v21';
+var CACHE_NAME = 'stack-it-v22';
 var ASSETS = [
   './',
   './index.html',

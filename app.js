@@ -206,6 +206,28 @@
   function startOfDay(d) { var c = new Date(d); c.setHours(0, 0, 0, 0); return c; }
   function addDays(d, n) { var c = new Date(d); c.setDate(c.getDate() + n); return c; }
 
+  // ---------- tips that retire themselves ----------
+  // Each tip shows during the first few app sessions it appears in, then goes away for good.
+  // Within a session it stays put, so nothing vanishes while you're looking at it.
+
+  var TIPS_KEY = 'stackit.tips';
+  var TIP_SESSIONS = 3;
+  var tipCounts = (function () { try { return JSON.parse(localStorage.getItem(TIPS_KEY)) || {}; } catch (e) { return {}; } })();
+  var tipsThisSession = {};
+
+  function useTip(key) {
+    if (tipsThisSession[key]) return true;
+    if ((tipCounts[key] || 0) >= TIP_SESSIONS) return false;
+    tipsThisSession[key] = true;
+    tipCounts[key] = (tipCounts[key] || 0) + 1;
+    try { localStorage.setItem(TIPS_KEY, JSON.stringify(tipCounts)); } catch (e) {}
+    return true;
+  }
+
+  function showTip(node, key, when) {
+    node.classList.toggle('hidden', !(when !== false && useTip(key)));
+  }
+
   function el(tag, cls, text) {
     var e = document.createElement(tag);
     if (cls) e.className = cls;
@@ -505,6 +527,7 @@
   // fromHistory: Safari already animated the back swipe. instant: our own edge swipe already showed the screen.
   function goToScreen(name, habitId, fromHistory, instant) {
     var prev = state.screen;
+    if (name !== 'home') state.reordering = false;
     if (name !== 'detail') state.lastTab = name;
     state.screen = name;
     if (habitId) {
@@ -652,7 +675,8 @@
     undo: '<path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 010 11H11"/>',
     edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/>',
     share: '<path d="M12 3v12M8 7l4-4 4 4"/><path d="M5 12v7a1 1 0 001 1h12a1 1 0 001-1v-7"/>',
-    archive: '<rect x="3" y="4" width="18" height="5" rx="1"/><path d="M5 9v10a1 1 0 001 1h12a1 1 0 001-1V9"/><path d="M10 13h4"/>'
+    archive: '<rect x="3" y="4" width="18" height="5" rx="1"/><path d="M5 9v10a1 1 0 001 1h12a1 1 0 001-1V9"/><path d="M10 13h4"/>',
+    reorder: '<path d="M8 4v16M4 8l4-4 4 4"/><path d="M16 20V4M12 16l4 4 4-4"/>'
   };
 
   // Preview and menu share one width and stack as a group, kept on screen,
@@ -678,8 +702,9 @@
       { label: done ? 'Undo today' : 'Mark done today', icon: done ? 'undo' : 'check', run: function () { toggleDoneToday(habit.id); } },
       { label: 'Edit', icon: 'edit', run: function () { openHabitSheet(habit.id); } },
       { label: 'Share streak card', icon: 'share', run: function () { openStreakCard(habit.id); } },
+      { label: 'Reorder habits', icon: 'reorder', run: startReorder },
       { label: 'Archive', icon: 'archive', destructive: true, run: function () { archiveHabit(habit); } }
-    ];
+    ].filter(function (item) { return item.icon !== 'reorder' || activeHabits().length > 1; });
     var rect = card.getBoundingClientRect();
     var backdrop = el('div', 'ctx-backdrop');
     // The preview is always the full list-style card (even from grid view), so nothing gets cut off.
@@ -766,16 +791,20 @@
     renderDayHead();
 
     var all = activeHabits();
-    var list = data.dayFilter === 'all' ? all : todaysHabits();
+    if (all.length < 2) state.reordering = false;
+    var list = state.reordering || data.dayFilter === 'all' ? all : todaysHabits();
+    showTip($('homeTip'), 'home-gestures', list.length > 0 && !state.reordering);
+    $('reorderBar').classList.toggle('hidden', !state.reordering);
     var listEl = $('habitList');
     var emptyEl = $('emptyState');
     listEl.innerHTML = '';
     listEl.classList.toggle('grid-mode', data.viewMode === 'grid');
+    listEl.classList.toggle('is-reordering', !!state.reordering);
     var vt = $('viewToggleBtn');
     vt.innerHTML = '<svg><use href="#' + (data.viewMode === 'grid' ? 'sym-list' : 'sym-grid') + '"/></svg>';
     vt.setAttribute('aria-label', data.viewMode === 'grid' ? 'Switch to list view' : 'Switch to grid view');
     setSeg($('dayFilterSeg'), data.dayFilter === 'all' ? 1 : 0);
-    $('dayFilterSeg').classList.toggle('hidden', all.length === 0);
+    $('dayFilterSeg').classList.toggle('hidden', all.length === 0 || !!state.reordering);
 
     if (list.length === 0) {
       var addBtn = $('emptyAddBtn');
@@ -808,6 +837,7 @@
 
   function wrapSwipe(card, habit, index) {
     var wrap = el('div', 'swipe-wrap');
+    wrap.dataset.habitId = habit.id;
     wrap.style.setProperty('--i', String(index));
     var bg = el('div', 'swipe-bg');
     bg.setAttribute('aria-hidden', 'true');
@@ -819,7 +849,7 @@
 
     var id = null, startX = 0, startY = 0, dx = 0, mode = null, holdTimer = null;
     card.addEventListener('pointerdown', function (e) {
-      if (e.button !== 0 || e.target.closest('.check-btn')) return;
+      if (state.reordering || e.button !== 0 || e.target.closest('.check-btn')) return;
       delete card.dataset.longPressed;
       id = e.pointerId; startX = e.clientX; startY = e.clientY; dx = 0; mode = null;
       clearTimeout(holdTimer);
@@ -865,6 +895,107 @@
     card.addEventListener('pointerup', function (e) { finish(e, true); });
     card.addEventListener('pointercancel', function (e) { finish(e, false); });
     return wrap;
+  }
+
+  // ---------- reorder mode ----------
+  // Like Reminders: enter from the hold menu, drag any habit, the rest slide out of the way, tap Done.
+
+  function startReorder() {
+    state.reordering = true;
+    renderHome();
+  }
+
+  function finishReorder() {
+    state.reordering = false;
+    renderHome();
+  }
+
+  function applyHabitOrder(ids) {
+    var byId = {};
+    data.habits.forEach(function (h) { byId[h.id] = h; });
+    var slots = [];
+    data.habits.forEach(function (h, i) { if (ids.indexOf(h.id) !== -1) slots.push(i); });
+    var next = data.habits.slice();
+    slots.forEach(function (slot, k) { next[slot] = byId[ids[k]]; });
+    data.habits = next;
+    saveData();
+  }
+
+  // Slide siblings from where they were to where they are now (FLIP).
+  function slideFrom(before) {
+    before.forEach(function (b) {
+      var after = b.node.getBoundingClientRect();
+      var dx = b.rect.left - after.left, dy = b.rect.top - after.top;
+      if (!dx && !dy) return;
+      b.node.style.transition = 'none';
+      b.node.style.transform = 'translate(' + dx + 'px,' + dy + 'px)';
+      void b.node.offsetWidth;
+      b.node.style.transition = 'transform 240ms cubic-bezier(0.2, 0.9, 0.25, 1)';
+      b.node.style.transform = '';
+    });
+  }
+
+  function wireReorder() {
+    var list = $('habitList');
+    var drag = null;
+    $('reorderDoneBtn').addEventListener('click', finishReorder);
+
+    list.addEventListener('pointerdown', function (e) {
+      if (!state.reordering || e.button !== 0) return;
+      var wrap = e.target.closest('.swipe-wrap');
+      if (!wrap) return;
+      e.preventDefault();
+      var rect = wrap.getBoundingClientRect();
+      var ph = el('div', 'reorder-slot');
+      ph.style.height = rect.height + 'px';
+      wrap.parentNode.insertBefore(ph, wrap);
+      wrap.classList.add('is-lifted');
+      wrap.style.width = rect.width + 'px';
+      wrap.style.height = rect.height + 'px';
+      wrap.style.left = rect.left + 'px';
+      wrap.style.top = rect.top + 'px';
+      drag = { wrap: wrap, ph: ph, id: e.pointerId, offX: e.clientX - rect.left, offY: e.clientY - rect.top };
+      list.setPointerCapture(e.pointerId);
+    });
+
+    list.addEventListener('pointermove', function (e) {
+      if (!drag || e.pointerId !== drag.id) return;
+      drag.wrap.style.left = (e.clientX - drag.offX) + 'px';
+      drag.wrap.style.top = (e.clientY - drag.offY) + 'px';
+      if (e.clientY < 90) window.scrollBy(0, -10);
+      else if (e.clientY > window.innerHeight - 120) window.scrollBy(0, 10);
+      var others = Array.prototype.slice.call(list.querySelectorAll('.swipe-wrap:not(.is-lifted)'));
+      // Hit-test against layout boxes, not transformed ones, so a card mid-slide can't bounce back.
+      var lr = list.getBoundingClientRect();
+      var over = null;
+      others.forEach(function (o) {
+        var own = o.offsetParent === list;
+        var left = lr.left + o.offsetLeft - (own ? 0 : list.offsetLeft);
+        var top = lr.top + o.offsetTop - (own ? 0 : list.offsetTop);
+        if (e.clientX >= left && e.clientX <= left + o.offsetWidth && e.clientY >= top && e.clientY <= top + o.offsetHeight) over = o;
+      });
+      if (!over) return;
+      var items = Array.prototype.slice.call(list.children);
+      var phIdx = items.indexOf(drag.ph), overIdx = items.indexOf(over);
+      var before = others.map(function (o) { return { node: o, rect: o.getBoundingClientRect() }; });
+      if (phIdx < overIdx) list.insertBefore(drag.ph, over.nextSibling);
+      else list.insertBefore(drag.ph, over);
+      slideFrom(before);
+    });
+
+    function drop(e) {
+      if (!drag || e.pointerId !== drag.id) return;
+      var d = drag;
+      drag = null;
+      var from = d.wrap.getBoundingClientRect();
+      d.ph.parentNode.replaceChild(d.wrap, d.ph);
+      d.wrap.classList.remove('is-lifted');
+      d.wrap.style.width = d.wrap.style.height = d.wrap.style.left = d.wrap.style.top = '';
+      slideFrom([{ node: d.wrap, rect: from }]);
+      applyHabitOrder(Array.prototype.map.call(list.querySelectorAll('.swipe-wrap'), function (w) { return w.dataset.habitId; }));
+    }
+    list.addEventListener('pointerup', drop);
+    list.addEventListener('pointercancel', drop);
   }
 
   // ---------- weekly recap (shown Sunday and Monday) ----------
@@ -1077,6 +1208,10 @@
       toggleDoneToday(habit.id);
     });
     top.appendChild(check);
+    var grip = el('span', 'hc-grip');
+    grip.setAttribute('aria-hidden', 'true');
+    grip.innerHTML = '<svg viewBox="0 0 24 24"><path d="M5 8h14M5 12h14M5 16h14"/></svg>';
+    top.appendChild(grip);
     card.appendChild(top);
 
     var bottom = el('div', 'hc-bottom');
@@ -1092,7 +1227,7 @@
 
     card.addEventListener('click', function () {
       if (card.dataset.longPressed) { delete card.dataset.longPressed; return; }
-      if (Date.now() - Number(card.dataset.swipedAt || 0) < 400) return;
+      if (state.reordering || Date.now() - Number(card.dataset.swipedAt || 0) < 400) return;
       goToScreen('detail', habit.id);
     });
     homeRefs[habit.id] = { card: card, check: check, num: num, meta: meta, dots: dots };
@@ -1221,6 +1356,7 @@
     renderCalendar(habit);
     renderHistory(habit);
     showDetailTab(state.detailTab);
+    showTip($('calTip'), 'calendar');
   }
 
   function renderMilestones(habit, cur) {
@@ -1625,7 +1761,7 @@
       var b = buckets[sel];
       cap.innerHTML = '<b>' + b.caption + '</b> · ' + (b.stats.scheduled ? b.stats.done + ' of ' + b.stats.scheduled + ' done (' + b.stats.rate + '%)' : 'nothing scheduled');
     } else {
-      cap.textContent = 'Tap a bar for the numbers.';
+      cap.textContent = useTip('insights-bars') ? 'Tap a bar for the numbers.' : '';
     }
     host.querySelectorAll('.bar-hit').forEach(function (hit) {
       hit.addEventListener('click', function () {
@@ -2059,7 +2195,7 @@
         preview.innerHTML = '';
         preview.appendChild(img);
         var canShareFiles = !!(navigator.canShare && navigator.canShare({ files: [state.cardFile] }));
-        $('cardHint').textContent = canShareFiles ? 'Send it anywhere, or press and hold the card to save it.' : 'Press and hold the card to save it, or use the button below.';
+        $('cardHint').textContent = !useTip('card-save') ? '' : canShareFiles ? 'Send it anywhere, or press and hold the card to save it.' : 'Press and hold the card to save it, or use the button below.';
         $('cardShareBtn').innerHTML = '<svg class="btn-ico"><use href="#sym-share"/></svg>' + (canShareFiles ? 'Share' : 'Save image');
         $('cardShareBtn').disabled = false;
       }, 'image/png');
@@ -2310,6 +2446,7 @@
     applyTextSize();
     document.addEventListener('visibilitychange', function () { if (!document.hidden) applyTextSize(); });
     wireEdgeSwipe();
+    wireReorder();
     window.addEventListener('resize', moveTabLens);
     if (document.fonts) document.fonts.ready.then(moveTabLens);
     document.querySelector('#markDoneBtn .btn-check').innerHTML = CHECK_SVG;
