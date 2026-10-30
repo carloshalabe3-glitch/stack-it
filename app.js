@@ -306,6 +306,54 @@
     return !isRequired(habit, new Date(), todayKey());
   }
 
+  // ---------- the day Home is showing ----------
+  // Home can step back a day to fix a missed log, or ahead to see what's coming.
+  // state.homeDay is a date key, or null for today.
+
+  function homeKey() { return state.homeDay || todayKey(); }
+  function homeDate() { return parseDateKey(homeKey()); }
+  function homeOffset() { return Math.round((homeDate() - startOfDay(new Date())) / 86400000); }
+
+  function isDoneOn(habit, key) {
+    return habit.completedDates.indexOf(key) !== -1;
+  }
+
+  function isRestOnHomeDay(habit) {
+    return !isRequired(habit, homeDate(), homeKey());
+  }
+
+  function habitsDueOn(key) {
+    var date = parseDateKey(key);
+    return activeHabits().filter(function (h) { return isRequired(h, date, key); });
+  }
+
+  // "yesterday", "tomorrow", or "Thu, Oct 29", for labels that name the day.
+  function homeDayName() {
+    var offset = homeOffset();
+    if (offset === -1) return 'yesterday';
+    if (offset === 1) return 'tomorrow';
+    return homeDate().toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+  }
+
+  function shiftHomeDay(delta) {
+    // delta 0 jumps back to today, sliding in from whichever side today is on.
+    var key = delta === 0 ? todayKey() : dateKey(addDays(homeDate(), delta));
+    state.homeShift = (delta === 0 ? -homeOffset() : delta) < 0 ? 'prev' : 'next';
+    state.homeDay = key === todayKey() ? null : key;
+    renderHome();
+  }
+
+  function toggleHomeDone(habitId) {
+    var key = homeKey();
+    if (key > todayKey()) { showToast('That day hasn’t happened yet.'); return; }
+    toggleDoneToday(habitId, key);
+    if (key !== todayKey()) {
+      var habit = findHabit(habitId);
+      var name = homeDayName();
+      showToast(habit && isDoneOn(habit, key) ? 'Marked done for ' + name + '.' : 'Unmarked for ' + name + '.');
+    }
+  }
+
   // Home shows only what's actually on today's schedule — habits resting
   // today (by weekly schedule or time off) are hidden there, not just faded.
   function todaysHabits() {
@@ -702,14 +750,16 @@
   }
 
   function openHabitMenu(habit, card) {
-    var done = isDoneToday(habit);
+    var done = isDoneOn(habit, homeKey());
+    var offset = homeOffset();
+    var dayWord = offset === 0 ? 'today' : (offset === -1 ? 'yesterday' : 'for ' + homeDayName());
     var items = [
-      { label: done ? 'Undo today' : 'Mark done today', icon: done ? 'undo' : 'check', run: function () { toggleDoneToday(habit.id); } },
+      { label: (done ? 'Undo ' : 'Mark done ') + dayWord, icon: done ? 'undo' : 'check', future: offset > 0, run: function () { toggleHomeDone(habit.id); } },
       { label: 'Edit', icon: 'edit', run: function () { openHabitSheet(habit.id); } },
       { label: 'Share streak card', icon: 'share', run: function () { openStreakCard(habit.id); } },
       { label: 'Reorder habits', icon: 'reorder', run: startReorder },
       { label: 'Archive', icon: 'archive', destructive: true, run: function () { archiveHabit(habit); } }
-    ].filter(function (item) { return item.icon !== 'reorder' || activeHabits().length > 1; });
+    ].filter(function (item) { return !item.future && (item.icon !== 'reorder' || activeHabits().length > 1); });
     var rect = card.getBoundingClientRect();
     var backdrop = el('div', 'ctx-backdrop');
     // The preview is always the full list-style card (even from grid view), so nothing gets cut off.
@@ -797,7 +847,9 @@
 
     var all = activeHabits();
     if (all.length < 2) state.reordering = false;
-    var list = state.reordering || data.dayFilter === 'all' ? all : todaysHabits();
+    var key = homeKey();
+    var offset = homeOffset();
+    var list = state.reordering || data.dayFilter === 'all' ? all : habitsDueOn(key);
     showTip($('homeTip'), 'home-gestures', list.length > 0 && !state.reordering);
     $('reorderBar').classList.toggle('hidden', !state.reordering);
     var listEl = $('habitList');
@@ -805,9 +857,14 @@
     listEl.innerHTML = '';
     listEl.classList.toggle('grid-mode', data.viewMode === 'grid');
     listEl.classList.toggle('is-reordering', !!state.reordering);
+    listEl.classList.remove('day-in-prev', 'day-in-next');
+    if (state.homeShift) listEl.classList.add('day-in-' + state.homeShift);
+    $('emptyState').classList.toggle('day-in', !!state.homeShift);
+    state.homeShift = null;
     var vt = $('viewToggleBtn');
     vt.innerHTML = '<svg><use href="#' + (data.viewMode === 'grid' ? 'sym-list' : 'sym-grid') + '"/></svg>';
     vt.setAttribute('aria-label', data.viewMode === 'grid' ? 'Switch to list view' : 'Switch to grid view');
+    $('dayFilterSeg').querySelector('[data-filter="today"]').textContent = offset === 0 ? 'Today' : offset === -1 ? 'Yesterday' : offset === 1 ? 'Tomorrow' : 'That day';
     setSeg($('dayFilterSeg'), data.dayFilter === 'all' ? 1 : 0);
     $('dayFilterSeg').classList.toggle('hidden', all.length === 0 || !!state.reordering);
 
@@ -817,13 +874,13 @@
         $('emptyTitle').textContent = 'Nothing stacked yet';
         $('emptyText').textContent = 'Add the first habit you want to build. Start with one you can do tomorrow, too.';
         addBtn.classList.remove('hidden');
-      } else if (isTimeOff(todayKey())) {
+      } else if (isTimeOff(key)) {
         $('emptyTitle').textContent = 'Time off';
-        $('emptyText').textContent = "Nothing counts against you today. Every streak is safe where you left it.";
+        $('emptyText').textContent = offset === 0 ? 'Nothing counts against you today. Every streak is safe where you left it.' : 'Nothing counts against you on this day.';
         addBtn.classList.add('hidden');
       } else {
         $('emptyTitle').textContent = 'Rest day';
-        $('emptyText').textContent = 'Nothing on the schedule today. Switch to All habits to see everything you’re building.';
+        $('emptyText').textContent = 'Nothing on the schedule ' + (offset === 0 ? 'today' : 'this day') + '. Switch to All habits to see everything you’re building.';
         addBtn.classList.add('hidden');
       }
       emptyEl.classList.remove('hidden');
@@ -871,10 +928,10 @@
       if (!mode) {
         if (Math.abs(mx) < 8 && Math.abs(my) < 8) return;
         clearTimeout(holdTimer);
-        mode = mx > 0 && Math.abs(mx) > Math.abs(my) ? 'swipe' : 'scroll';
+        mode = mx > 0 && Math.abs(mx) > Math.abs(my) && homeOffset() <= 0 ? 'swipe' : 'scroll';
         if (mode === 'swipe') {
           card.setPointerCapture(id);
-          label.textContent = isDoneToday(habit) ? 'Undo' : 'Done';
+          label.textContent = isDoneOn(habit, homeKey()) ? 'Undo' : 'Done';
           wrap.classList.add('is-swiping');
         }
       }
@@ -894,7 +951,7 @@
       wrap.classList.add('is-settling');
       card.style.transform = '';
       setTimeout(function () { wrap.classList.remove('is-settling'); }, 280);
-      if (fire) toggleDoneToday(habit.id);
+      if (fire) toggleHomeDone(habit.id);
     }
     card.addEventListener('contextmenu', function (e) { e.preventDefault(); });
     card.addEventListener('pointerup', function (e) { finish(e, true); });
@@ -1110,11 +1167,18 @@
   }
 
   function renderDayHead() {
-    var now = new Date();
-    $('dayDate').textContent = now.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
-    var todays = todaysHabits();
+    var key = homeKey();
+    var offset = homeOffset();
+    var date = homeDate();
+    var label = date.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+    if (offset === -1 || offset === 1) {
+      label = (offset < 0 ? 'Yesterday · ' : 'Tomorrow · ') + date.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+    }
+    $('dayDate').textContent = label;
+    $('dayTodayBtn').classList.toggle('hidden', offset === 0);
+    var todays = habitsDueOn(key);
     var total = todays.length;
-    var done = todays.filter(isDoneToday).length;
+    var done = todays.filter(function (h) { return isDoneOn(h, key); }).length;
     var status = $('dayStatus');
     var sub = $('daySub');
     var ring = $('dayRing');
@@ -1123,7 +1187,9 @@
     var circumference = 125.66;
     var pct = total ? done / total : 0;
     ring.classList.toggle('is-complete', total > 0 && done === total);
-    paintBrandMark(total === 0 || done === total);
+    // The header tally always tracks the real today, whichever day Home is showing.
+    var realToday = todaysHabits();
+    paintBrandMark(realToday.every(isDoneToday));
 
     if (activeHabits().length === 0) {
       status.textContent = 'A clean slate';
@@ -1131,10 +1197,25 @@
       ringLabel.textContent = '';
       pct = 0;
     } else if (total === 0) {
-      var off = isTimeOff(todayKey());
+      var off = isTimeOff(key);
       status.textContent = off ? 'Time off' : 'Rest day';
-      sub.textContent = off ? 'Nothing counts against you today.' : 'Nothing scheduled. Your streaks are safe.';
+      if (offset === 0) sub.textContent = off ? 'Nothing counts against you today.' : 'Nothing scheduled. Your streaks are safe.';
+      else if (offset < 0) sub.textContent = off ? 'Nothing counted against you that day.' : 'Nothing was scheduled that day.';
+      else sub.textContent = off ? 'Nothing will count against you that day.' : 'Nothing scheduled that day.';
       ringLabel.textContent = '–';
+    } else if (offset > 0) {
+      status.textContent = plural(total, 'habit') + ' planned';
+      sub.textContent = 'You can log this day once it comes.';
+      ringLabel.textContent = '0/' + total;
+      pct = 0;
+    } else if (offset < 0 && done === total) {
+      status.textContent = 'All done';
+      sub.textContent = total === 1 ? 'It was logged that day.' : 'Every habit was logged that day.';
+      ringLabel.innerHTML = CHECK_SVG;
+    } else if (offset < 0) {
+      status.textContent = done === 0 ? 'Nothing logged' : done + ' of ' + total + ' done';
+      sub.textContent = 'Forgot one? Tap its circle or swipe it to log it for this day.';
+      ringLabel.textContent = done + '/' + total;
     } else if (done === total) {
       status.textContent = total === 1 ? 'Done for today' : 'All done today';
       sub.textContent = total === 1 ? 'Your streak is safe. See you tomorrow.' : 'Every streak is safe. See you tomorrow.';
@@ -1174,15 +1255,18 @@
     habit.completedDates.forEach(function (k) { set[k] = true; });
     var created = startOfDay(new Date(habit.createdAt));
     var today = startOfDay(new Date());
+    // The week leading up to the day Home is showing; its own dot gets the ring.
+    var end = homeDate();
     for (var i = 6; i >= 0; i--) {
-      var d = addDays(today, -i);
+      var d = addDays(end, -i);
       var key = dateKey(d);
       var dot = el('i');
       var cls;
       if (d < created) cls = 'd-none';
       else if (set[key]) cls = 'd-done';
+      else if (d > today) cls = 'd-future';
       else if (!isRequired(habit, d, key)) cls = 'd-rest';
-      else if (i === 0) cls = 'd-open';
+      else if (d.getTime() === today.getTime()) cls = 'd-open';
       else cls = 'd-miss';
       dot.className = cls + (i === 0 ? ' d-today' : '');
       dot.title = DAY_NAMES_SHORT[d.getDay()];
@@ -1200,8 +1284,8 @@
       if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goToScreen('detail', habit.id); }
     });
     card.style.setProperty('--i', String(index));
-    var done = isDoneToday(habit);
-    var rest = isRestToday(habit);
+    var done = isDoneOn(habit, homeKey());
+    var rest = isRestOnHomeDay(habit);
     var cur = currentStreak(habit);
     if (done) card.classList.add('is-done');
     if (rest && !done) card.classList.add('is-rest');
@@ -1224,9 +1308,10 @@
     check.innerHTML = CHECK_SVG;
     if (done) check.classList.add('is-done');
     if (rest) check.classList.add('is-rest');
+    if (homeOffset() > 0) check.classList.add('is-future');
     check.addEventListener('click', function (e) {
       e.stopPropagation();
-      toggleDoneToday(habit.id);
+      toggleHomeDone(habit.id);
     });
     top.appendChild(check);
     var grip = el('span', 'hc-grip');
@@ -1259,10 +1344,10 @@
   function updateHomeCard(habit) {
     var refs = homeRefs[habit.id];
     if (!refs) return;
-    var done = isDoneToday(habit);
+    var done = isDoneOn(habit, homeKey());
     var cur = currentStreak(habit);
     refs.card.classList.toggle('is-done', done);
-    refs.card.classList.toggle('is-rest', isRestToday(habit) && !done);
+    refs.card.classList.toggle('is-rest', isRestOnHomeDay(habit) && !done);
     refs.check.classList.toggle('is-done', done);
     refs.check.setAttribute('aria-label', done ? 'Mark not done' : 'Mark done');
     if (done) {
@@ -1282,7 +1367,7 @@
     refs.dots.replaceWith(newDots);
     refs.dots = newDots;
     var best = bestStreak(habit);
-    refs.meta.textContent = (isRestToday(habit) ? 'Rest day · ' : '') + formatSchedule(habit) + (best > 0 ? ' · best ' + best : '');
+    refs.meta.textContent = (isRestOnHomeDay(habit) ? 'Rest day · ' : '') + formatSchedule(habit) + (best > 0 ? ' · best ' + best : '');
     renderDayHead();
   }
 
@@ -2246,10 +2331,11 @@
     habit.milestonesHit = habitMilestones(habit).filter(function (m) { return cur >= m.days; }).map(function (m) { return m.key; });
   }
 
-  function toggleDoneToday(habitId) {
+  // Toggles today, or another day when Home is showing one (key).
+  function toggleDoneToday(habitId, key) {
     var habit = findHabit(habitId);
     if (!habit) return;
-    var key = todayKey();
+    key = key || todayKey();
     var idx = habit.completedDates.indexOf(key);
     var nowDone = idx === -1;
     if (nowDone) {
@@ -2257,6 +2343,8 @@
     } else {
       habit.completedDates.splice(idx, 1);
     }
+    var dayStart = parseDateKey(key).getTime();
+    if (nowDone && dayStart < startOfDay(new Date(habit.createdAt)).getTime()) habit.createdAt = dayStart;
     saveData();
     if (nowDone) checkMilestonesForHabit(habit);
     else resyncMilestonesHit(habit);
@@ -2450,6 +2538,7 @@
     var now = todayKey();
     if (now === state.renderedDay) return;
     state.renderedDay = now;
+    state.homeDay = null;
     if (state.screen === 'home') renderHome();
     else if (state.screen === 'detail' && detailRefs) renderDetail(detailRefs.habitId);
     else if (state.screen === 'insights') renderInsights();
@@ -2458,6 +2547,16 @@
 
   setInterval(tick, 30000);
   document.addEventListener('visibilitychange', function () { if (!document.hidden) tick(); });
+
+  // Coming back after a while starts on today again, not on whatever day was left open.
+  var hiddenAt = 0;
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) { hiddenAt = Date.now(); return; }
+    if (state.homeDay && hiddenAt && Date.now() - hiddenAt > 10 * 60000) {
+      state.homeDay = null;
+      if (state.screen === 'home') renderHome();
+    }
+  });
 
   // ---------- wiring ----------
 
@@ -2489,6 +2588,9 @@
       saveData();
       renderHome();
     });
+    $('dayPrevBtn').addEventListener('click', function () { shiftHomeDay(-1); });
+    $('dayNextBtn').addEventListener('click', function () { shiftHomeDay(1); });
+    $('dayTodayBtn').addEventListener('click', function () { shiftHomeDay(0); });
     $('dayFilterSeg').querySelectorAll('.seg-opt').forEach(function (opt) {
       opt.addEventListener('click', function () {
         if (data.dayFilter === opt.dataset.filter) return;

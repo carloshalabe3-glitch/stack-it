@@ -78,7 +78,12 @@
       <section class="recap week-recap hidden" id="weekRecap" aria-label="Last week's recap"></section>
       <div class="day-head" id="dayHead">
         <div class="day-head-text">
-          <div class="eyebrow" id="dayDate"></div>
+          <div class="day-nav">
+            <button class="day-nav-btn" id="dayPrevBtn" aria-label="Previous day"><svg><use href="#sym-back"/></svg></button>
+            <div class="eyebrow" id="dayDate"></div>
+            <button class="day-nav-btn" id="dayNextBtn" aria-label="Next day"><svg><use href="#sym-chev"/></svg></button>
+            <button class="day-today-btn hidden" id="dayTodayBtn">Today</button>
+          </div>
           <div class="day-status" id="dayStatus"></div>
           <div class="day-sub" id="daySub"></div>
         </div>
