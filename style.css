@@ -1697,11 +1697,30 @@ svg { display: block; }
    Large titles: big at the top, shrink into a glass bar on scroll
    ================================================================ */
 
+/* In dark appearance iOS draws the clock and battery over the page, so the bar
+   reaches up behind them (like a native nav bar) and the strip stays solid
+   until a compact glass bar takes it over. */
+body::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: env(safe-area-inset-top);
+  background: var(--bg);
+  z-index: 29;
+  pointer-events: none;
+  transition: opacity 200ms;
+}
+body.bar-compact::before { opacity: 0; }
+
 .topbar {
   position: sticky;
   top: 0;
   z-index: 30;
-  margin: 0 calc(-1 * var(--gutter));
+  margin: calc(-1 * env(safe-area-inset-top)) calc(-1 * var(--gutter)) 0;
+  padding-top: calc(env(safe-area-inset-top) + 1.1rem);
+  min-height: calc(64px + env(safe-area-inset-top));
   padding-left: var(--gutter);
   padding-right: var(--gutter);
   transition: padding 260ms var(--ease-out), background 200ms, box-shadow 200ms;
@@ -1709,8 +1728,8 @@ svg { display: block; }
 .topbar h1 { font-size: 2.05rem; letter-spacing: -0.025em; transform-origin: left center; transition: transform 260ms var(--ease-out); }
 .topbar .brand-mark { transition: transform 260ms var(--ease-out); transform-origin: left center; }
 .topbar.is-compact {
-  min-height: 52px;
-  padding-top: 0.45rem;
+  min-height: calc(52px + env(safe-area-inset-top));
+  padding-top: calc(env(safe-area-inset-top) + 0.45rem);
   padding-bottom: 0.45rem;
   background: var(--glass);
   -webkit-backdrop-filter: var(--glass-blur);

@@ -682,9 +682,10 @@
     compactQueued = false;
     var screenEl = $(SCREEN_IDS[state.screen]);
     var bar = screenEl && screenEl.querySelector('.topbar');
-    if (!bar) return;
     var threshold = state.screen === 'detail' ? 150 : 12;
-    bar.classList.toggle('is-compact', window.scrollY > threshold);
+    var compact = !!bar && window.scrollY > threshold;
+    document.body.classList.toggle('bar-compact', compact);
+    if (bar) bar.classList.toggle('is-compact', compact);
   }
   window.addEventListener('scroll', function () {
     if (!compactQueued) { compactQueued = true; requestAnimationFrame(updateCompactBars); }
