@@ -41,7 +41,7 @@
 
   --tabbar-h: 60px;
   --gutter: 1rem;
-  color-scheme: light dark;
+  color-scheme: light;
 }
 
 /* ================================================================
@@ -1653,41 +1653,42 @@ svg { display: block; }
    ================================================================ */
 
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #141110;
-    --surface: #1E1917;
-    --surface-2: #2A2320;
-    --line: #2C2522;
-    --line-strong: #40362F;
-    --ink: #F5EFEB;
-    --ink-soft: #B4A79F;
-    --ink-mute: #7D716A;
-    --danger: #A99D96;
-    --flame: #E0522B;
-    --flame-deep: #F2845F;
-    --flame-soft: #5A2A1C;
-    --flame-tint: #2A1912;
-    --flame-mid: #B9573A;
-    --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 28px -16px rgba(0, 0, 0, 0.7);
-    --shadow-sheet: 0 -8px 40px -12px rgba(0, 0, 0, 0.6);
-    --glass: rgba(42, 35, 32, 0.5);
-    --glass-strong: rgba(52, 44, 40, 0.72);
-    --glass-shine: inset 0 1px 0 rgba(255, 255, 255, 0.14), inset 0 -1px 1px rgba(255, 255, 255, 0.04), inset 0 0 0 1px rgba(255, 255, 255, 0.07);
-    --glass-drop: 0 10px 30px -12px rgba(0, 0, 0, 0.7), 0 2px 6px -2px rgba(0, 0, 0, 0.4);
-  }
-  .bg-top { stop-color: #F9A672; }
-  .bg-end { stop-color: #C8401C; }
-  .tab-lens { background: rgba(255, 255, 255, 0.13); box-shadow: var(--glass-shine), 0 4px 14px -6px rgba(0, 0, 0, 0.6); }
-  .seg { background: rgba(42, 35, 32, 0.6); box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.35), inset 0 0 0 1px rgba(255, 255, 255, 0.05); }
-  .seg-thumb { background: rgba(255, 255, 255, 0.14); box-shadow: var(--glass-shine), 0 4px 12px -5px rgba(0, 0, 0, 0.6); }
-  .check-btn { border-color: rgba(110, 96, 88, 0.8); box-shadow: var(--glass-shine), 0 3px 10px -4px rgba(0, 0, 0, 0.5); }
-  .sheet { background: rgba(30, 25, 23, 0.84); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 -10px 40px -14px rgba(0, 0, 0, 0.7); }
-  .sheet-backdrop.is-open { background: rgba(0, 0, 0, 0.5); }
-  .toast { background: #2E2724; color: var(--ink); box-shadow: 0 12px 30px -10px rgba(0, 0, 0, 0.7), inset 0 0 0 1px rgba(255, 255, 255, 0.06); }
-  .milestone-card .btn { background: #1A1A1A; border-color: #1A1A1A; }
-  .btn-danger { background: #5B4F49; border-color: #5B4F49; }
+/* Dark appearance: set by the app (Settings > Appearance), which can follow the
+   phone or override it. data-theme on <html> is applied before first paint. */
+:root:where([data-theme="dark"]) { color-scheme: dark; }
+:root:where([data-theme="dark"]) {
+  --bg: #141110;
+  --surface: #1E1917;
+  --surface-2: #2A2320;
+  --line: #2C2522;
+  --line-strong: #40362F;
+  --ink: #F5EFEB;
+  --ink-soft: #B4A79F;
+  --ink-mute: #7D716A;
+  --danger: #A99D96;
+  --flame: #E0522B;
+  --flame-deep: #F2845F;
+  --flame-soft: #5A2A1C;
+  --flame-tint: #2A1912;
+  --flame-mid: #B9573A;
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 28px -16px rgba(0, 0, 0, 0.7);
+  --shadow-sheet: 0 -8px 40px -12px rgba(0, 0, 0, 0.6);
+  --glass: rgba(42, 35, 32, 0.5);
+  --glass-strong: rgba(52, 44, 40, 0.72);
+  --glass-shine: inset 0 1px 0 rgba(255, 255, 255, 0.14), inset 0 -1px 1px rgba(255, 255, 255, 0.04), inset 0 0 0 1px rgba(255, 255, 255, 0.07);
+  --glass-drop: 0 10px 30px -12px rgba(0, 0, 0, 0.7), 0 2px 6px -2px rgba(0, 0, 0, 0.4);
 }
+:where([data-theme="dark"]) .bg-top { stop-color: #F9A672; }
+:where([data-theme="dark"]) .bg-end { stop-color: #C8401C; }
+:where([data-theme="dark"]) .tab-lens { background: rgba(255, 255, 255, 0.13); box-shadow: var(--glass-shine), 0 4px 14px -6px rgba(0, 0, 0, 0.6); }
+:where([data-theme="dark"]) .seg { background: rgba(42, 35, 32, 0.6); box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.35), inset 0 0 0 1px rgba(255, 255, 255, 0.05); }
+:where([data-theme="dark"]) .seg-thumb { background: rgba(255, 255, 255, 0.14); box-shadow: var(--glass-shine), 0 4px 12px -5px rgba(0, 0, 0, 0.6); }
+:where([data-theme="dark"]) .check-btn { border-color: rgba(110, 96, 88, 0.8); box-shadow: var(--glass-shine), 0 3px 10px -4px rgba(0, 0, 0, 0.5); }
+:where([data-theme="dark"]) .sheet { background: rgba(30, 25, 23, 0.84); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 -10px 40px -14px rgba(0, 0, 0, 0.7); }
+:where([data-theme="dark"]) .sheet-backdrop.is-open { background: rgba(0, 0, 0, 0.5); }
+:where([data-theme="dark"]) .toast { background: #2E2724; color: var(--ink); box-shadow: 0 12px 30px -10px rgba(0, 0, 0, 0.7), inset 0 0 0 1px rgba(255, 255, 255, 0.06); }
+:where([data-theme="dark"]) .milestone-card .btn { background: #1A1A1A; border-color: #1A1A1A; }
+:where([data-theme="dark"]) .btn-danger { background: #5B4F49; border-color: #5B4F49; }
 
 /* ================================================================
    Large titles: big at the top, shrink into a glass bar on scroll

@@ -2530,6 +2530,48 @@
     );
   }
 
+  // ---------- appearance ----------
+  // The app's own light/dark choice, or 'auto' to follow the phone. The inline
+  // script in index.html applies it before first paint; this keeps it in step after.
+
+  var THEME_KEY = 'stackit.theme';
+  var THEME_COLORS = { light: '#FFFFFF', dark: '#141110' };
+  var darkQuery = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+
+  function themePref() {
+    var pref = null;
+    try { pref = localStorage.getItem(THEME_KEY); } catch (e) {}
+    return pref === 'light' || pref === 'dark' ? pref : 'auto';
+  }
+
+  function applyTheme() {
+    var pref = themePref();
+    var dark = pref === 'dark' || (pref === 'auto' && !!darkQuery && darkQuery.matches);
+    document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+    var meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute('content', THEME_COLORS[dark ? 'dark' : 'light']);
+  }
+
+  function setThemePref(pref) {
+    try {
+      if (pref === 'auto') localStorage.removeItem(THEME_KEY);
+      else localStorage.setItem(THEME_KEY, pref);
+    } catch (e) {}
+    applyTheme();
+    paintThemeControl();
+  }
+
+  if (darkQuery) {
+    if (darkQuery.addEventListener) darkQuery.addEventListener('change', applyTheme);
+    else if (darkQuery.addListener) darkQuery.addListener(applyTheme);
+  }
+
+  var THEME_PREFS = ['auto', 'light', 'dark'];
+
+  function paintThemeControl() {
+    setSeg($('themeSeg'), THEME_PREFS.indexOf(themePref()));
+  }
+
   // ---------- live tick ----------
 
   // Only re-render when the calendar day actually rolls over, so we don't
@@ -2588,6 +2630,10 @@
       saveData();
       renderHome();
     });
+    $('themeSeg').querySelectorAll('.seg-opt').forEach(function (opt) {
+      opt.addEventListener('click', function () { setThemePref(opt.dataset.themePref); });
+    });
+    paintThemeControl();
     $('dayPrevBtn').addEventListener('click', function () { shiftHomeDay(-1); });
     $('dayNextBtn').addEventListener('click', function () { shiftHomeDay(1); });
     $('dayTodayBtn').addEventListener('click', function () { shiftHomeDay(0); });

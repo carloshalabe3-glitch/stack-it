@@ -7,10 +7,18 @@
 <meta name="description" content="A private streak tracker for building good habits. Everything stays on your device.">
 
 <link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#FFFFFF" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#141110" media="(prefers-color-scheme: dark)">
+<script>
+  // Appearance is applied before anything paints: the app's own choice, or the phone's.
+  (function () {
+    var pref = null;
+    try { pref = localStorage.getItem('stackit.theme'); } catch (e) {}
+    var dark = pref === 'dark' || (pref !== 'light' && !!window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+    document.write('<meta name="theme-color" content="' + (dark ? '#141110' : '#FFFFFF') + '">' +
+      '<meta name="apple-mobile-web-app-status-bar-style" content="' + (dark ? 'black' : 'default') + '">');
+  })();
+</script>
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Stack it">
 <meta name="mobile-web-app-capable" content="yes">
 <link rel="apple-touch-icon" href="icons/icon-180.png">
@@ -283,6 +291,17 @@
     <section class="card card-flush" id="archivedCard">
       <div class="card-head card-head-pad"><h3>Archived</h3></div>
       <div id="archivedList" class="row-list"></div>
+    </section>
+
+    <section class="card">
+      <div class="card-head"><h3>Appearance</h3></div>
+      <div class="seg seg-3" id="themeSeg" role="radiogroup" aria-label="Appearance">
+        <button class="seg-opt" data-theme-pref="auto" role="radio">Automatic</button>
+        <button class="seg-opt" data-theme-pref="light" role="radio">Light</button>
+        <button class="seg-opt" data-theme-pref="dark" role="radio">Dark</button>
+        <span class="seg-thumb" aria-hidden="true"></span>
+      </div>
+      <p class="field-hint">Automatic follows your iPhone. Light or Dark keeps this app that way.</p>
     </section>
 
     <section class="card card-flush">
