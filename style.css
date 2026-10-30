@@ -398,6 +398,9 @@ svg { display: block; }
 @keyframes dayFade { from { opacity: 0; } }
 .check-btn.is-future { opacity: 0.4; }
 
+.theme-seg .seg-opt { display: flex; align-items: center; justify-content: center; }
+.theme-seg .seg-opt svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
 .day-status {
   font-family: var(--display);
   font-weight: 700;

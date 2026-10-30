@@ -46,6 +46,9 @@
     <symbol id="sym-insights" viewBox="0 0 24 24"><path d="M5 19V13M12 19V6M19 19v-9"/></symbol>
     <symbol id="sym-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3v2.2M12 18.8V21M3 12h2.2M18.8 12H21M5.6 5.6l1.6 1.6M16.8 16.8l1.6 1.6M5.6 18.4l1.6-1.6M16.8 7.2l1.6-1.6"/></symbol>
     <symbol id="sym-share" viewBox="0 0 24 24"><path d="M12 3v12M8 7l4-4 4 4"/><path d="M5 12v7a1 1 0 001 1h12a1 1 0 001-1v-7"/></symbol>
+    <symbol id="sym-theme-auto" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor"/></symbol>
+    <symbol id="sym-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.6"/><path d="M12 2.8v2.1M12 19.1v2.1M2.8 12h2.1M19.1 12h2.1M5.5 5.5L7 7M17 17l1.5 1.5M5.5 18.5L7 17M17 7l1.5-1.5"/></symbol>
+    <symbol id="sym-moon" viewBox="0 0 24 24"><path d="M19.5 14.6A7.8 7.8 0 0 1 9.4 4.5a7.8 7.8 0 1 0 10.1 10.1z"/></symbol>
     <symbol id="sym-chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></symbol>
     <symbol id="sym-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
     <symbol id="sym-flag" viewBox="0 0 24 24"><path d="M5 21V4"/><path d="M5 4h11l-2 4 2 4H5"/></symbol>
@@ -295,13 +298,13 @@
 
     <section class="card">
       <div class="card-head"><h3>Appearance</h3></div>
-      <div class="seg seg-3" id="themeSeg" role="radiogroup" aria-label="Appearance">
-        <button class="seg-opt" data-theme-pref="auto" role="radio">Automatic</button>
-        <button class="seg-opt" data-theme-pref="light" role="radio">Light</button>
-        <button class="seg-opt" data-theme-pref="dark" role="radio">Dark</button>
+      <div class="seg seg-3 theme-seg" id="themeSeg" role="radiogroup" aria-label="Appearance">
+        <button class="seg-opt" data-theme-pref="auto" role="radio" aria-label="Automatic"><svg aria-hidden="true"><use href="#sym-theme-auto"/></svg></button>
+        <button class="seg-opt" data-theme-pref="light" role="radio" aria-label="Light"><svg aria-hidden="true"><use href="#sym-sun"/></svg></button>
+        <button class="seg-opt" data-theme-pref="dark" role="radio" aria-label="Dark"><svg aria-hidden="true"><use href="#sym-moon"/></svg></button>
         <span class="seg-thumb" aria-hidden="true"></span>
       </div>
-      <p class="field-hint">Automatic follows your iPhone. Light or Dark keeps this app that way.</p>
+      <p class="field-hint" id="themeHint"></p>
     </section>
 
     <section class="card card-flush">

@@ -2568,8 +2568,19 @@
 
   var THEME_PREFS = ['auto', 'light', 'dark'];
 
+  var THEME_HINTS = {
+    auto: 'Automatic · follows your iPhone.',
+    light: 'Light · this app stays light.',
+    dark: 'Dark · this app stays dark.'
+  };
+
   function paintThemeControl() {
-    setSeg($('themeSeg'), THEME_PREFS.indexOf(themePref()));
+    var pref = themePref();
+    setSeg($('themeSeg'), THEME_PREFS.indexOf(pref));
+    $('themeSeg').querySelectorAll('.seg-opt').forEach(function (opt) {
+      opt.setAttribute('aria-checked', opt.dataset.themePref === pref ? 'true' : 'false');
+    });
+    $('themeHint').textContent = THEME_HINTS[pref];
   }
 
   // ---------- live tick ----------
