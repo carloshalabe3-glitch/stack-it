@@ -38,6 +38,7 @@
       <path class="tally-stroke tally-slash" d="M8 32L40 16"/>
     </symbol>
     <symbol id="sym-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+    <symbol id="sym-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
     <symbol id="sym-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
     <symbol id="sym-back" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></symbol>
     <symbol id="sym-grid" viewBox="0 0 24 24"><rect x="4" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.5"/></symbol>
@@ -358,8 +359,14 @@
         <button type="button" class="chip" data-preset="every">Every day</button>
         <button type="button" class="chip" data-preset="weekdays">Weekdays</button>
         <button type="button" class="chip" data-preset="weekends">Weekends</button>
+        <button type="button" class="chip" data-preset="weekly">Times a week</button>
       </div>
       <div class="day-grid" id="dayGrid"></div>
+      <div class="weekly-picker hidden" id="weeklyPicker">
+        <button type="button" class="weekly-step" id="weeklyMinus" aria-label="Fewer times a week"><svg><use href="#sym-minus"/></svg></button>
+        <div class="weekly-value"><b id="weeklyCount">3</b><span>times a week</span></div>
+        <button type="button" class="weekly-step" id="weeklyPlus" aria-label="More times a week"><svg><use href="#sym-plus"/></svg></button>
+      </div>
       <div class="field-hint" id="dayGridHint"></div>
       <div id="dayGridError" class="field-error"></div>
     </div>

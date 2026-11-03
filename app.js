@@ -128,6 +128,7 @@
       createdAt: typeof h.createdAt === 'number' ? h.createdAt : Date.now(),
       completedDates: Array.isArray(h.completedDates) ? h.completedDates.filter(function (d) { return typeof d === 'string'; }) : [],
       scheduleDays: scheduleDays,
+      weeklyTarget: typeof h.weeklyTarget === 'number' && h.weeklyTarget >= 1 && h.weeklyTarget <= 6 ? Math.round(h.weeklyTarget) : null,
       archived: !!h.archived,
       milestonesHit: Array.isArray(h.milestonesHit) ? h.milestonesHit : [],
       customMilestones: Array.isArray(h.customMilestones) ? h.customMilestones.filter(function (m) { return m && typeof m.days === 'number' && m.days > 0; }).map(normalizeCustomMilestone) : []
@@ -297,13 +298,92 @@
   // app-wide time-off range. Only a missed required day breaks a streak;
   // any day actually done — scheduled or a bonus rest day — adds to it.
   function isRequired(habit, date, key) {
+    if (isFlexible(habit)) return false;
     if (habit.scheduleDays.indexOf(date.getDay()) === -1) return false;
     if (isTimeOff(key)) return false;
     return true;
   }
 
   function isRestToday(habit) {
+    if (isFlexible(habit)) return flexStatus(habit, new Date()).rest;
     return !isRequired(habit, new Date(), todayKey());
+  }
+
+  // ---------- "X times a week" habits ----------
+  // A weeklyTarget habit can be done on any days; what counts is the week's total
+  // (weeks run Sunday to Saturday). A week that ends short breaks the streak, and
+  // its days don't count toward the next one. Every done day still adds a day.
+
+  function isFlexible(habit) { return !!habit.weeklyTarget; }
+
+  function doneSet(habit) {
+    var set = {};
+    habit.completedDates.forEach(function (k) { set[k] = true; });
+    return set;
+  }
+
+  // Days in a week the habit could actually be done: on or after its start, not time off.
+  function openDaysInWeek(habit, weekStart, from) {
+    var created = startOfDay(new Date(habit.createdAt));
+    var n = 0;
+    for (var i = 0; i < 7; i++) {
+      var d = addDays(weekStart, i);
+      if (d >= created && (!from || d >= from) && !isTimeOff(dateKey(d))) n++;
+    }
+    return n;
+  }
+
+  // The target, trimmed when the habit started mid-week or time off leaves fewer days.
+  function weekTarget(habit, weekStart) {
+    return Math.min(habit.weeklyTarget, openDaysInWeek(habit, weekStart));
+  }
+
+  function weekDoneCount(set, weekStart) {
+    var n = 0;
+    for (var i = 0; i < 7; i++) if (set[dateKey(addDays(weekStart, i))]) n++;
+    return n;
+  }
+
+  // One entry per week from the habit's first week through this one.
+  function flexWeeks(habit) {
+    var set = doneSet(habit);
+    var thisWeek = weekStartOf(new Date()).getTime();
+    var weeks = [];
+    for (var w = weekStartOf(new Date(habit.createdAt)); w.getTime() <= thisWeek; w = addDays(w, 7)) {
+      var done = weekDoneCount(set, w);
+      var target = weekTarget(habit, w);
+      weeks.push({ start: w, done: done, target: target, passed: done >= target, current: w.getTime() === thisWeek });
+    }
+    return weeks;
+  }
+
+  // Where a habit stands in the week containing date. "needed" means skipping
+  // that day would make the week impossible; "rest" means the week is already met.
+  function flexStatus(habit, date) {
+    var set = doneSet(habit);
+    var ws = weekStartOf(date);
+    var key = dateKey(date);
+    var done = weekDoneCount(set, ws);
+    var target = weekTarget(habit, ws);
+    var doneElsewhere = done - (set[key] ? 1 : 0);
+    var stillNeeded = target - doneElsewhere;
+    var off = isTimeOff(key);
+    return {
+      done: done,
+      target: target,
+      rest: off || stillNeeded <= 0,
+      needed: !off && !set[key] && stillNeeded > 0 && stillNeeded >= openDaysInWeek(habit, ws, startOfDay(date))
+    };
+  }
+
+  function flexCurrentRun(habit) {
+    var weeks = flexWeeks(habit);
+    var run = [];
+    for (var i = weeks.length - 1; i >= 0; i--) {
+      if (!weeks[i].current && !weeks[i].passed) break;
+      run.unshift(weeks[i]);
+    }
+    return run;
   }
 
   // ---------- the day Home is showing ----------
@@ -319,12 +399,25 @@
   }
 
   function isRestOnHomeDay(habit) {
+    if (isFlexible(habit)) return flexStatus(habit, homeDate()).rest;
     return !isRequired(habit, homeDate(), homeKey());
   }
 
+  // Due on a day: on the schedule, or for an "X times a week" habit, its week
+  // isn't met yet (or it was done that day).
   function habitsDueOn(key) {
     var date = parseDateKey(key);
-    return activeHabits().filter(function (h) { return isRequired(h, date, key); });
+    return activeHabits().filter(function (h) {
+      if (isFlexible(h)) return isDoneOn(h, key) || !flexStatus(h, date).rest;
+      return isRequired(h, date, key);
+    });
+  }
+
+  // What the day's ring counts: an "X times a week" habit only once it's done that
+  // day or can't be skipped anymore without missing the week.
+  function countsTowardDay(habit, key) {
+    if (!isFlexible(habit)) return true;
+    return isDoneOn(habit, key) || flexStatus(habit, parseDateKey(key)).needed;
   }
 
   // "yesterday", "tomorrow", or "Thu, Oct 29", for labels that name the day.
@@ -363,6 +456,7 @@
   }
 
   function currentStreak(habit) {
+    if (isFlexible(habit)) return flexCurrentRun(habit).reduce(function (n, w) { return n + w.done; }, 0);
     var set = {};
     habit.completedDates.forEach(function (k) { set[k] = true; });
     var floor = new Date(habit.createdAt);
@@ -384,6 +478,14 @@
   }
 
   function bestStreak(habit) {
+    if (isFlexible(habit)) {
+      var top = 0, sum = 0;
+      flexWeeks(habit).forEach(function (w) {
+        sum = w.current || w.passed ? sum + w.done : 0;
+        if (sum > top) top = sum;
+      });
+      return top;
+    }
     var set = {};
     habit.completedDates.forEach(function (k) { set[k] = true; });
     var cursor = new Date(habit.createdAt);
@@ -407,6 +509,17 @@
   }
 
   function currentStreakStartKey(habit) {
+    if (isFlexible(habit)) {
+      var flexSet = doneSet(habit);
+      var run = flexCurrentRun(habit);
+      for (var wi = 0; wi < run.length; wi++) {
+        for (var di = 0; di < 7; di++) {
+          var k = dateKey(addDays(run[wi].start, di));
+          if (flexSet[k]) return k;
+        }
+      }
+      return todayKey();
+    }
     var set = {};
     habit.completedDates.forEach(function (k) { set[k] = true; });
     var floor = new Date(habit.createdAt);
@@ -429,6 +542,7 @@
 
   // Next day this habit is actually on the schedule, after today.
   function nextScheduledDate(habit) {
+    if (isFlexible(habit)) return addDays(weekStartOf(new Date()), 7);
     var cursor = addDays(startOfDay(new Date()), 1);
     for (var i = 0; i < 400; i++) {
       if (isRequired(habit, cursor, dateKey(cursor))) return cursor;
@@ -474,7 +588,10 @@
     return days.map(function (d) { return DAY_NAMES_SHORT[d]; }).join(', ');
   }
 
-  function formatSchedule(habit) { return scheduleLabel(habit.scheduleDays); }
+  function formatSchedule(habit) {
+    if (isFlexible(habit)) return habit.weeklyTarget + '× a week';
+    return scheduleLabel(habit.scheduleDays);
+  }
 
   // ---------- completion stats (for Insights & detail) ----------
 
@@ -486,6 +603,17 @@
     var todayDate = startOfDay(new Date());
     var scheduled = 0, done = 0;
     habits.forEach(function (habit) {
+      if (isFlexible(habit)) {
+        // Whole weeks count once they've ended; this week counts what's done so far.
+        flexWeeks(habit).forEach(function (w) {
+          var weekEnd = addDays(w.start, 6);
+          if (w.current ? w.start > end || todayDate < start : weekEnd < start || weekEnd > end) return;
+          var got = Math.min(w.done, w.target);
+          scheduled += w.current ? got : w.target;
+          done += got;
+        });
+        return;
+      }
       var set = {};
       habit.completedDates.forEach(function (k) { set[k] = true; });
       var floor = startOfDay(new Date(habit.createdAt));
@@ -1136,11 +1264,11 @@
         var req = isRequired(habit, day, key);
         var cls = 'd-none';
         if (day >= created) {
-          if (set[key]) cls = req ? 'd-done' : 'd-bonus';
+          if (set[key]) cls = req || isFlexible(habit) ? 'd-done' : 'd-bonus';
           else if (req) { cls = 'd-miss'; missDays.push(DAY_NAMES_SHORT[day.getDay()]); }
           else cls = 'd-rest';
         }
-        if (set[key] && !req) bonusDays.push(DAY_NAMES[day.getDay()]);
+        if (set[key] && !req && !isFlexible(habit)) bonusDays.push(DAY_NAMES[day.getDay()]);
         dots.appendChild(el('i', cls));
       }
       row.appendChild(dots);
@@ -1150,6 +1278,7 @@
       if (hs.scheduled && hs.done && (!best || hs.rate > best.rate || (hs.rate === best.rate && hs.done > best.done))) {
         best = { name: habit.name, done: hs.done, scheduled: hs.scheduled, rate: hs.rate };
       }
+      if (isFlexible(habit) && hs.done < hs.scheduled) missed.push(habit.name + ', ' + hs.done + ' of ' + hs.scheduled);
       if (missDays.length) missed.push(habit.name + ' on ' + missDays.join(', '));
       if (bonusDays.length) bonus.push(habit.name + ' on ' + bonusDays.join(', '));
     });
@@ -1177,7 +1306,7 @@
     }
     $('dayDate').textContent = label;
     $('dayTodayBtn').classList.toggle('hidden', offset === 0);
-    var todays = habitsDueOn(key);
+    var todays = habitsDueOn(key).filter(function (h) { return countsTowardDay(h, key); });
     var total = todays.length;
     var done = todays.filter(function (h) { return isDoneOn(h, key); }).length;
     var status = $('dayStatus');
@@ -1189,7 +1318,7 @@
     var pct = total ? done / total : 0;
     ring.classList.toggle('is-complete', total > 0 && done === total);
     // The header tally always tracks the real today, whichever day Home is showing.
-    var realToday = todaysHabits();
+    var realToday = habitsDueOn(todayKey()).filter(function (h) { return countsTowardDay(h, todayKey()); });
     paintBrandMark(realToday.every(isDoneToday));
 
     if (activeHabits().length === 0) {
@@ -1250,6 +1379,13 @@
     brandComplete = complete;
   }
 
+  // "X times a week" cards show the week's progress instead of the schedule.
+  function homeCardSchedule(habit) {
+    if (!isFlexible(habit)) return formatSchedule(habit);
+    var st = flexStatus(habit, homeDate());
+    return st.done + ' of ' + habit.weeklyTarget + ' this week';
+  }
+
   function weekDots(habit) {
     var wrap = el('div', 'hc-week');
     var set = {};
@@ -1266,6 +1402,7 @@
       if (d < created) cls = 'd-none';
       else if (set[key]) cls = 'd-done';
       else if (d > today) cls = 'd-future';
+      else if (isFlexible(habit) && d.getTime() === today.getTime() && !flexStatus(habit, d).rest) cls = 'd-open';
       else if (!isRequired(habit, d, key)) cls = 'd-rest';
       else if (d.getTime() === today.getTime()) cls = 'd-open';
       else cls = 'd-miss';
@@ -1296,7 +1433,7 @@
     var title = el('div', 'hc-title');
     title.appendChild(el('div', 'hc-name', habit.name));
     var meta = el('div', 'hc-meta');
-    var metaText = rest ? 'Rest day · ' + formatSchedule(habit) : formatSchedule(habit);
+    var metaText = rest && !isFlexible(habit) ? 'Rest day · ' + formatSchedule(habit) : homeCardSchedule(habit);
     var best = bestStreak(habit);
     if (best > 0) metaText += ' · best ' + best;
     meta.textContent = metaText;
@@ -1368,7 +1505,7 @@
     refs.dots.replaceWith(newDots);
     refs.dots = newDots;
     var best = bestStreak(habit);
-    refs.meta.textContent = (isRestOnHomeDay(habit) ? 'Rest day · ' : '') + formatSchedule(habit) + (best > 0 ? ' · best ' + best : '');
+    refs.meta.textContent = (isRestOnHomeDay(habit) && !isFlexible(habit) ? 'Rest day · ' : '') + homeCardSchedule(habit) + (best > 0 ? ' · best ' + best : '');
     renderDayHead();
   }
 
@@ -1573,6 +1710,7 @@
         if (done[key]) cell.classList.add('is-done');
         else if (cellDate >= createdDate) {
           if (isTimeOff(key)) cell.classList.add('is-off');
+          else if (isFlexible(habit)) { /* any day counts; no fixed misses */ }
           else if (habit.scheduleDays.indexOf(cellDate.getDay()) === -1) cell.classList.add('is-rest');
           else if (!isToday) cell.classList.add('is-miss');
         }
@@ -1890,7 +2028,7 @@
       var floor = startOfDay(new Date(habit.createdAt));
       for (var i = 55; i >= 0; i--) {
         var d = addDays(today, -i);
-        if (d < floor) continue;
+        if (d < floor || isFlexible(habit)) continue;
         var key = dateKey(d);
         if (!isRequired(habit, d, key)) continue;
         if (set[key]) { counts[d.getDay()]++; dones[d.getDay()]++; }
@@ -2065,6 +2203,8 @@
     $('habitNameInput').value = habit ? habit.name : (prefill ? prefill.name : '');
     state.selectedIcon = habit ? (habit.icon || '') : (prefill ? prefill.icon : '');
     state.selectedDays = habit ? habit.scheduleDays.slice() : ALL_DAYS.slice();
+    state.weeklyTarget = habit ? habit.weeklyTarget : null;
+    state.lastWeeklyTarget = state.weeklyTarget || 3;
     renderIconGrid();
     renderDayGrid();
     $('dayGridError').textContent = '';
@@ -2100,6 +2240,12 @@
   }
 
   function renderDayGrid() {
+    var weekly = !!state.weeklyTarget;
+    $('dayGrid').classList.toggle('hidden', weekly);
+    $('weeklyPicker').classList.toggle('hidden', !weekly);
+    $('weeklyCount').textContent = String(state.weeklyTarget || state.lastWeeklyTarget);
+    $('weeklyMinus').disabled = state.weeklyTarget <= 1;
+    $('weeklyPlus').disabled = state.weeklyTarget >= 6;
     var grid = $('dayGrid');
     grid.innerHTML = '';
     DAY_LABELS.forEach(function (label, idx) {
@@ -2108,6 +2254,7 @@
       opt.setAttribute('aria-label', DAY_NAMES[idx]);
       if (state.selectedDays.indexOf(idx) !== -1) opt.classList.add('selected');
       opt.addEventListener('click', function () {
+        state.weeklyTarget = null;
         var pos = state.selectedDays.indexOf(idx);
         if (pos === -1) state.selectedDays.push(idx);
         else state.selectedDays.splice(pos, 1);
@@ -2117,11 +2264,13 @@
     });
     var sorted = state.selectedDays.slice().sort();
     document.querySelectorAll('#dayPresets .chip').forEach(function (chip) {
+      if (chip.dataset.preset === 'weekly') { chip.classList.toggle('is-active', weekly); return; }
       var preset = PRESETS[chip.dataset.preset];
-      chip.classList.toggle('is-active', preset.length === sorted.length && preset.every(function (d) { return sorted.indexOf(d) !== -1; }));
+      chip.classList.toggle('is-active', !weekly && preset.length === sorted.length && preset.every(function (d) { return sorted.indexOf(d) !== -1; }));
     });
     var hint = $('dayGridHint');
-    if (sorted.length === 0) hint.textContent = '';
+    if (weekly) hint.textContent = 'Any ' + plural(state.weeklyTarget, 'day') + ' each week, Sunday to Saturday. End a week short and the streak resets.';
+    else if (sorted.length === 0) hint.textContent = '';
     else if (sorted.length === 7) hint.textContent = 'Counts every day. Miss one and the streak resets.';
     else hint.textContent = 'Counts on ' + scheduleLabel(sorted) + '. Other days never break the streak, and doing it anyway adds a bonus day.';
   }
@@ -2132,17 +2281,19 @@
       $('habitNameInput').focus();
       return;
     }
-    if (state.selectedDays.length === 0) {
+    if (!state.weeklyTarget && state.selectedDays.length === 0) {
       $('dayGridError').textContent = 'Pick at least one day it counts on.';
       return;
     }
     $('dayGridError').textContent = '';
-    var scheduleDays = state.selectedDays.slice();
+    var weeklyTarget = state.weeklyTarget || null;
+    var scheduleDays = weeklyTarget ? ALL_DAYS.slice() : state.selectedDays.slice();
     if (state.editingHabitId) {
       var habit = findHabit(state.editingHabitId);
       habit.name = name;
       habit.icon = state.selectedIcon;
       habit.scheduleDays = scheduleDays;
+      habit.weeklyTarget = weeklyTarget;
       resyncMilestonesHit(habit);
       saveData();
       closeHabitSheet();
@@ -2157,6 +2308,7 @@
         createdAt: Date.now(),
         completedDates: [],
         scheduleDays: scheduleDays,
+        weeklyTarget: weeklyTarget,
         archived: false,
         milestonesHit: [],
         customMilestones: []
@@ -2732,9 +2884,22 @@
     $('habitNameInput').addEventListener('keydown', function (e) { if (e.key === 'Enter') saveHabitSheet(); });
     document.querySelectorAll('#dayPresets .chip').forEach(function (chip) {
       chip.addEventListener('click', function () {
-        state.selectedDays = PRESETS[chip.dataset.preset].slice();
+        if (chip.dataset.preset === 'weekly') {
+          state.weeklyTarget = state.weeklyTarget || state.lastWeeklyTarget || 3;
+        } else {
+          state.weeklyTarget = null;
+          state.selectedDays = PRESETS[chip.dataset.preset].slice();
+        }
         renderDayGrid();
       });
+    });
+    $('weeklyMinus').addEventListener('click', function () {
+      state.weeklyTarget = state.lastWeeklyTarget = Math.max(1, (state.weeklyTarget || 3) - 1);
+      renderDayGrid();
+    });
+    $('weeklyPlus').addEventListener('click', function () {
+      state.weeklyTarget = state.lastWeeklyTarget = Math.min(6, (state.weeklyTarget || 3) + 1);
+      renderDayGrid();
     });
 
     $('confirmCancel').addEventListener('click', closeConfirm);
