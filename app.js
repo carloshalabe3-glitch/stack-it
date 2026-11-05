@@ -413,6 +413,20 @@
     });
   }
 
+  // Where a habit sits on Home for a day: 0 due, 1 a "times a week" habit that's
+  // optional that day (shown quieter), 2 resting.
+  function homeGroup(habit, key, date) {
+    if (isFlexible(habit)) {
+      if (countsTowardDay(habit, key)) return 0;
+      return flexStatus(habit, date).rest ? 2 : 1;
+    }
+    return isRequired(habit, date, key) ? 0 : 2;
+  }
+
+  function isOptionalOnHomeDay(habit) {
+    return isFlexible(habit) && homeGroup(habit, homeKey(), homeDate()) === 1;
+  }
+
   // What the day's ring counts: an "X times a week" habit only once it's done that
   // day or can't be skipped anymore without missing the week.
   function countsTowardDay(habit, key) {
@@ -692,6 +706,63 @@
     var lens = $('tabLens');
     lens.style.width = active.offsetWidth + 'px';
     lens.style.transform = 'translateX(' + active.offsetLeft + 'px)';
+  }
+
+  // Press and slide along the tab bar: the lens follows your finger, the tab under
+  // it lights up, and letting go opens it. A plain tap still works as a tap.
+  var tabDraggedAt = 0;
+
+  function wireTabDrag() {
+    var bar = $('tabbar');
+    var lens = $('tabLens');
+    var tabs = Array.prototype.slice.call(bar.querySelectorAll('.tab'));
+    var drag = null;
+
+    function tabAt(x) {
+      var hit = null;
+      tabs.forEach(function (t) {
+        var r = t.getBoundingClientRect();
+        if (x >= r.left && x <= r.right) hit = t;
+      });
+      if (hit) return hit;
+      return x < tabs[0].getBoundingClientRect().left ? tabs[0] : tabs[tabs.length - 1];
+    }
+
+    bar.addEventListener('pointerdown', function (e) {
+      if (e.button !== 0) return;
+      drag = { id: e.pointerId, startX: e.clientX, moved: false };
+    });
+    bar.addEventListener('pointermove', function (e) {
+      if (!drag || e.pointerId !== drag.id) return;
+      if (!drag.moved) {
+        if (Math.abs(e.clientX - drag.startX) < 6) return;
+        drag.moved = true;
+        try { bar.setPointerCapture(e.pointerId); } catch (err) {}
+        bar.classList.add('is-dragging');
+      }
+      var barLeft = bar.getBoundingClientRect().left;
+      var w = lens.offsetWidth;
+      var min = tabs[0].offsetLeft;
+      var max = tabs[tabs.length - 1].offsetLeft + tabs[tabs.length - 1].offsetWidth - w;
+      var x = Math.max(min, Math.min(max, e.clientX - barLeft - w / 2));
+      lens.style.transform = 'translateX(' + x + 'px)';
+      var over = tabAt(e.clientX);
+      tabs.forEach(function (t) { t.classList.toggle('is-hover', t === over); });
+    });
+    function end(e) {
+      if (!drag || e.pointerId !== drag.id) return;
+      var moved = drag.moved;
+      drag = null;
+      bar.classList.remove('is-dragging');
+      tabs.forEach(function (t) { t.classList.remove('is-hover'); });
+      if (!moved) return;
+      tabDraggedAt = Date.now();
+      var target = e.type === 'pointerup' ? tabAt(e.clientX) : null;
+      if (target && target.dataset.tab !== state.screen) goToScreen(target.dataset.tab);
+      else moveTabLens();
+    }
+    bar.addEventListener('pointerup', end);
+    bar.addEventListener('pointercancel', end);
   }
 
   // Opening a habit adds a history entry so Safari's own swipe-back works;
@@ -978,7 +1049,12 @@
     if (all.length < 2) state.reordering = false;
     var key = homeKey();
     var offset = homeOffset();
-    var list = state.reordering || data.dayFilter === 'all' ? all : habitsDueOn(key);
+    // One list for the day: what's due first, then "times a week" habits that are
+    // optional that day, then whatever is resting. Your own order holds within each.
+    var date = homeDate();
+    var list = state.reordering ? all : all.map(function (h, i) { return { habit: h, i: i, group: homeGroup(h, key, date) }; })
+      .sort(function (a, b) { return a.group - b.group || a.i - b.i; })
+      .map(function (x) { return x.habit; });
     showTip($('homeTip'), 'home-gestures', list.length > 0 && !state.reordering);
     $('reorderBar').classList.toggle('hidden', !state.reordering);
     var listEl = $('habitList');
@@ -993,25 +1069,11 @@
     var vt = $('viewToggleBtn');
     vt.innerHTML = '<svg><use href="#' + (data.viewMode === 'grid' ? 'sym-list' : 'sym-grid') + '"/></svg>';
     vt.setAttribute('aria-label', data.viewMode === 'grid' ? 'Switch to list view' : 'Switch to grid view');
-    $('dayFilterSeg').querySelector('[data-filter="today"]').textContent = offset === 0 ? 'Today' : offset === -1 ? 'Yesterday' : offset === 1 ? 'Tomorrow' : 'That day';
-    setSeg($('dayFilterSeg'), data.dayFilter === 'all' ? 1 : 0);
-    $('dayFilterSeg').classList.toggle('hidden', all.length === 0 || !!state.reordering);
 
     if (list.length === 0) {
-      var addBtn = $('emptyAddBtn');
-      if (all.length === 0) {
-        $('emptyTitle').textContent = 'Nothing stacked yet';
-        $('emptyText').textContent = 'Add the first habit you want to build. Start with one you can do tomorrow, too.';
-        addBtn.classList.remove('hidden');
-      } else if (isTimeOff(key)) {
-        $('emptyTitle').textContent = 'Time off';
-        $('emptyText').textContent = offset === 0 ? 'Nothing counts against you today. Every streak is safe where you left it.' : 'Nothing counts against you on this day.';
-        addBtn.classList.add('hidden');
-      } else {
-        $('emptyTitle').textContent = 'Rest day';
-        $('emptyText').textContent = 'Nothing on the schedule ' + (offset === 0 ? 'today' : 'this day') + '. Switch to All habits to see everything you’re building.';
-        addBtn.classList.add('hidden');
-      }
+      $('emptyTitle').textContent = 'Nothing stacked yet';
+      $('emptyText').textContent = 'Add the first habit you want to build. Start with one you can do tomorrow, too.';
+      $('emptyAddBtn').classList.remove('hidden');
       emptyEl.classList.remove('hidden');
       return;
     }
@@ -1427,6 +1489,7 @@
     var cur = currentStreak(habit);
     if (done) card.classList.add('is-done');
     if (rest && !done) card.classList.add('is-rest');
+    if (isOptionalOnHomeDay(habit)) card.classList.add('is-flex');
 
     var top = el('div', 'hc-top');
     top.appendChild(makeIconEl(habit, 'hc-icon'));
@@ -1486,6 +1549,7 @@
     var cur = currentStreak(habit);
     refs.card.classList.toggle('is-done', done);
     refs.card.classList.toggle('is-rest', isRestOnHomeDay(habit) && !done);
+    refs.card.classList.toggle('is-flex', isOptionalOnHomeDay(habit));
     refs.check.classList.toggle('is-done', done);
     refs.check.setAttribute('aria-label', done ? 'Mark not done' : 'Mark done');
     if (done) {
@@ -2782,9 +2846,13 @@
     });
 
     document.querySelectorAll('.tab').forEach(function (tab) {
-      tab.addEventListener('click', function () { goToScreen(tab.dataset.tab); });
+      tab.addEventListener('click', function () {
+        if (Date.now() - tabDraggedAt < 400) return;
+        goToScreen(tab.dataset.tab);
+      });
     });
 
+    wireTabDrag();
     $('addHabitBtn').addEventListener('click', function () { openHabitSheet(null); });
     $('emptyAddBtn').addEventListener('click', function () { openHabitSheet(null); });
     $('onbStartBtn').addEventListener('click', function () { openHabitSheet(null); });
@@ -2801,14 +2869,6 @@
     $('dayPrevBtn').addEventListener('click', function () { shiftHomeDay(-1); });
     $('dayNextBtn').addEventListener('click', function () { shiftHomeDay(1); });
     $('dayTodayBtn').addEventListener('click', function () { shiftHomeDay(0); });
-    $('dayFilterSeg').querySelectorAll('.seg-opt').forEach(function (opt) {
-      opt.addEventListener('click', function () {
-        if (data.dayFilter === opt.dataset.filter) return;
-        data.dayFilter = opt.dataset.filter;
-        saveData();
-        renderHome();
-      });
-    });
     $('insightsRangeSeg').querySelectorAll('.seg-opt').forEach(function (opt) {
       opt.addEventListener('click', function () {
         if (data.insightsRange === opt.dataset.range) return;

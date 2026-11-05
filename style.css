@@ -523,6 +523,10 @@ svg { display: block; }
 .habit-card:focus-visible, .check-btn:focus-visible, .btn:focus-visible, .tab:focus-visible { outline: 2px solid var(--flame); outline-offset: 2px; }
 .habit-card.is-done { background: var(--flame-tint); border-color: var(--flame-soft); }
 .habit-card.is-rest { opacity: 0.72; }
+/* "Times a week" habits on a day they're optional: present, but clearly not due. */
+.habit-card.is-flex { background: transparent; border-style: dashed; border-color: var(--line-strong); box-shadow: none; }
+.habit-card.is-flex .hc-num, .habit-card.is-flex .hc-name { color: var(--ink-soft); }
+.habit-card.is-flex .check-btn { border-style: dashed; background: transparent; box-shadow: none; }
 
 .hc-top { display: flex; align-items: center; gap: 0.75rem; }
 .hc-title { flex: 1; min-width: 0; }
@@ -1615,6 +1619,10 @@ svg { display: block; }
   box-shadow: var(--glass-shine), 0 4px 14px -6px rgba(178, 52, 23, 0.35);
   transition: transform 460ms cubic-bezier(0.3, 1.35, 0.5, 1), width 300ms var(--ease-out), scale var(--spring-out);
 }
+.tabbar { touch-action: none; }
+.tabbar.is-dragging .tab-lens, .tabbar.is-dragging:has(.tab:active) .tab-lens { scale: 1.12; transition: width 300ms var(--ease-out), scale var(--press-in) ease-out; }
+.tabbar.is-dragging .tab.is-active:not(.is-hover) { color: var(--ink-mute); }
+.tabbar.is-dragging .tab.is-hover { color: var(--flame-deep); }
 .tabbar:has(.tab:active) .tab-lens { scale: 1.06; transition: transform 460ms cubic-bezier(0.3, 1.35, 0.5, 1), scale var(--press-in) ease-out; }
 
 /* Flame-tinted glass for the add button */
