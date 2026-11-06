@@ -2166,6 +2166,7 @@
   // ---------- settings ----------
 
   function renderSettings() {
+    $('backupSummary').textContent = backupAgeLabel();
     var host = $('settingsHabitList');
     host.innerHTML = '';
     var list = activeHabits();
@@ -2688,6 +2689,48 @@
     toastTimer = setTimeout(function () { toast.classList.add('hidden'); }, 300);
   }
 
+  // ---------- backup reminder ----------
+  // Remembers when a backup was last copied out. After a month without one, the
+  // app offers it once, then again a week later if it still hasn't happened.
+
+  var BACKUP_KEY = 'stackit.backup';
+  var BACKUP_EVERY = 30 * 86400000;
+  var BACKUP_RENUDGE = 7 * 86400000;
+
+  function backupInfo() {
+    try { return JSON.parse(localStorage.getItem(BACKUP_KEY)) || {}; } catch (e) { return {}; }
+  }
+
+  function saveBackupInfo(info) {
+    try { localStorage.setItem(BACKUP_KEY, JSON.stringify(info)); } catch (e) {}
+  }
+
+  function markBackedUp() {
+    var info = backupInfo();
+    info.last = Date.now();
+    saveBackupInfo(info);
+  }
+
+  function backupAgeLabel() {
+    var last = backupInfo().last;
+    if (!last) return 'Not backed up yet';
+    var days = Math.floor((Date.now() - last) / 86400000);
+    return 'Last backup: ' + (days <= 0 ? 'today' : days === 1 ? 'yesterday' : days + ' days ago');
+  }
+
+  function maybeNudgeBackup() {
+    var habits = activeHabits();
+    if (!habits.length) return;
+    var info = backupInfo();
+    var now = Date.now();
+    var since = info.last || Math.min.apply(null, habits.map(function (h) { return h.createdAt; }));
+    if (now - since < BACKUP_EVERY) return;
+    if (info.nudged && now - info.nudged < BACKUP_RENUDGE) return;
+    info.nudged = now;
+    saveBackupInfo(info);
+    showToast(info.last ? 'A month since your last backup.' : 'Your history only lives on this phone.', { action: 'Back up', onAction: openBackupSheet, duration: 6000 });
+  }
+
   // ---------- backup & restore ----------
 
   function openBackupSheet() {
@@ -2699,7 +2742,11 @@
 
   function copyBackupText() {
     var textarea = $('backupExportArea');
-    function showCopied() { showToast('Backup copied. Paste it somewhere safe.'); }
+    function showCopied() {
+      markBackedUp();
+      if ($('backupSummary')) $('backupSummary').textContent = backupAgeLabel();
+      showToast('Backup copied. Paste it somewhere safe.');
+    }
     function showFailed() { showToast("Couldn't copy automatically. Tap the box and copy by hand."); }
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(textarea.value).then(showCopied, function () {
@@ -2937,6 +2984,8 @@
     $('backupBtn').addEventListener('click', openBackupSheet);
     $('backupCloseBtn').addEventListener('click', function () { closeSheet('backupSheet'); });
     $('backupCopyBtn').addEventListener('click', copyBackupText);
+    // Copying the text by hand counts as a backup too.
+    $('backupExportArea').addEventListener('copy', function () { markBackedUp(); if ($('backupSummary')) $('backupSummary').textContent = backupAgeLabel(); });
     $('backupRestoreBtn').addEventListener('click', restoreBackup);
 
     $('habitSheetCancel').addEventListener('click', closeHabitSheet);
@@ -2978,6 +3027,7 @@
   saveData();
   goToScreen('home');
   setTimeout(function () { $('brandMark').classList.remove('is-intro'); }, 950);
+  setTimeout(maybeNudgeBackup, 1600);
 
   if ('serviceWorker' in navigator) {
     // When a new version takes over, reload once so it's used right away
