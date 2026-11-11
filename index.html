@@ -158,14 +158,19 @@
     </header>
 
     <div class="hero" id="detailHero">
-      <div class="hero-icon" id="detailIcon"></div>
-      <h2 class="hero-name" id="detailName"></h2>
+      <div class="hero-head">
+        <div class="hero-icon" id="detailIcon"></div>
+        <div class="hero-head-text">
+          <h2 class="hero-name" id="detailName"></h2>
+          <div class="hero-chips" id="detailChips"></div>
+        </div>
+      </div>
+      <div class="hero-tally" id="detailTally" aria-hidden="true"></div>
       <div class="hero-streak-wrap">
         <div class="hero-streak" id="detailStreakNum">0</div>
         <div class="hero-unit" id="detailStreakUnit">day streak</div>
       </div>
       <div class="hero-since" id="detailSince"></div>
-      <div class="hero-chips" id="detailChips"></div>
     </div>
 
     <div class="detail-actions">
@@ -248,25 +253,30 @@
         <button class="seg-opt" data-range="month">Monthly</button>
         <span class="seg-thumb" aria-hidden="true"></span>
       </div>
-      <div class="recap" id="recapCard"></div>
-      <section class="card">
+      <section class="recap pulse" id="recapCard"></section>
+      <section class="card year-card">
         <div class="card-head">
-          <h3 id="trendTitle">Completion by week</h3>
+          <div class="year-nav">
+            <button class="cal-nav" id="yearPrevBtn" aria-label="Previous year"><svg><use href="#sym-back"/></svg></button>
+            <h3 id="yearLabel"></h3>
+            <button class="cal-nav" id="yearNextBtn" aria-label="Next year"><svg><use href="#sym-chev"/></svg></button>
+          </div>
+          <span class="card-head-note" id="yearNote"></span>
         </div>
-        <div class="chart" id="trendChart"></div>
-        <div class="chart-caption" id="trendCaption"></div>
+        <div class="year-filter" id="yearFilter" role="radiogroup" aria-label="Habit"></div>
+        <div class="year-grid" id="yearGrid"></div>
+        <div class="chart-caption" id="yearCaption"></div>
       </section>
       <section class="card">
         <div class="card-head">
-          <h3>Your strongest days</h3>
+          <h3>Strongest days</h3>
           <span class="card-head-note">Last 8 weeks</span>
         </div>
-        <div class="chart" id="weekdayChart"></div>
-        <div class="chart-caption" id="weekdayCaption"></div>
+        <div class="wd-chart" id="weekdayChart"></div>
       </section>
       <section class="card">
         <div class="card-head">
-          <h3>Streaks right now</h3>
+          <h3>Streaks</h3>
         </div>
         <div id="streakBoard" class="streak-board"></div>
       </section>
@@ -455,13 +465,18 @@
 
 <!-- ============ MILESTONE CELEBRATION ============ -->
 <div id="milestoneBackdrop" class="milestone-backdrop hidden">
-  <div class="milestone-card">
-    <div class="confetti" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
-    <svg class="milestone-mark tally-anim" aria-hidden="true"><use href="#sym-tally"/></svg>
+  <div class="milestone-card" role="dialog" aria-modal="true" aria-labelledby="milestoneTitle">
+    <div class="ms-stage" id="milestoneStage" aria-hidden="true">
+      <div class="ms-art" id="milestoneArt"></div>
+      <div class="ms-figure"><b class="ms-count" id="milestoneCount"></b><span class="ms-unit" id="milestoneUnit"></span></div>
+    </div>
     <div class="milestone-eyebrow" id="milestoneHabitName"></div>
     <div class="milestone-title" id="milestoneTitle"></div>
     <div class="milestone-sub" id="milestoneSub"></div>
-    <button class="btn btn-block btn-lg" id="milestoneOkBtn">Keep stacking</button>
+    <div class="ms-actions">
+      <button class="btn btn-lg ms-ok" id="milestoneOkBtn">Keep stacking</button>
+      <button class="ms-share" id="milestoneShareBtn" aria-label="Share streak card"><svg><use href="#sym-share"/></svg></button>
+    </div>
   </div>
 </div>
 

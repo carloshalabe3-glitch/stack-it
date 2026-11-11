@@ -2,7 +2,7 @@
   'use strict';
 
   var STORAGE_KEY = 'stackit.v1';
-  var APP_VERSION = '2.0';
+  var APP_VERSION = '2.1';
 
   // ---------- icons ----------
 
@@ -671,31 +671,36 @@
 
   var SCREEN_IDS = { home: 'homeScreen', detail: 'detailScreen', insights: 'insightsScreen', settings: 'settingsScreen' };
 
-  function showScreenEl(name, anim) {
+  var appEl = document.querySelector('.app');
+  var motionQuery = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
+  function reducedMotion() { return !!motionQuery && motionQuery.matches; }
+  function clamp01(n) { return n < 0 ? 0 : n > 1 ? 1 : n; }
+
+  function setActiveScreen(name) {
     Object.keys(SCREEN_IDS).forEach(function (key) {
-      var node = $(SCREEN_IDS[key]);
-      var active = key === name;
-      node.classList.remove('anim-push', 'anim-pop');
-      if (active) {
-        // Restart the entrance animation even if the class is already there.
-        node.classList.remove('is-active');
-        void node.offsetWidth;
-        if (anim === 'anim-push' || anim === 'anim-pop') node.classList.add(anim);
-        node.classList.add('is-active');
-      } else {
-        node.classList.remove('is-active');
-      }
+      $(SCREEN_IDS[key]).classList.toggle('is-active', key === name);
     });
+  }
+
+  // Tab bar, toast position and tab highlight for whichever screen is showing.
+  function setChrome(name) {
     var isDetail = name === 'detail';
-    var app = document.querySelector('.app');
-    // Coming back to a list shouldn't replay its entrance; after an edge swipe nothing animates at all.
-    app.classList.toggle('instant', anim === 'instant');
-    app.classList.toggle('returning', anim === 'anim-pop' || anim === 'instant');
     $('tabbar').classList.toggle('is-hidden', isDetail);
-    document.querySelector('.app').classList.toggle('no-tabbar', isDetail);
+    appEl.classList.toggle('no-tabbar', isDetail);
     $('toast').classList.toggle('no-tabbar', isDetail);
     document.querySelectorAll('.tab').forEach(function (t) { t.classList.toggle('is-active', t.dataset.tab === name); });
     moveTabLens();
+  }
+
+  // A plain switch between tabs: the screen fades up and its lists play their entrance.
+  // (.entering is what turns those entrances on, so nothing replays behind a habit opening or closing.)
+  function showScreenEl(name) {
+    Object.keys(SCREEN_IDS).forEach(function (key) { $(SCREEN_IDS[key]).classList.remove('is-active'); });
+    var node = $(SCREEN_IDS[name]);
+    void node.offsetWidth;
+    appEl.classList.add('entering');
+    node.classList.add('is-active');
+    setChrome(name);
     window.scrollTo(0, 0);
     updateCompactBars();
   }
@@ -776,8 +781,9 @@
     else if (name === 'settings') renderSettings();
   }
 
-  // fromHistory: Safari already animated the back swipe. instant: our own edge swipe already showed the screen.
-  function goToScreen(name, habitId, fromHistory, instant) {
+  // fromHistory: the browser's own back already popped the entry. viaDrag: an edge swipe is already holding the screen.
+  function goToScreen(name, habitId, fromHistory, viaDrag) {
+    if (name === 'detail' && !findHabit(habitId || state.currentHabitId)) return;
     var prev = state.screen;
     if (name !== 'home') state.reordering = false;
     if (name !== 'detail') state.lastTab = name;
@@ -790,11 +796,11 @@
       if (name === 'detail' && prev !== 'detail') history.pushState({ detail: true }, '');
       else if (prev === 'detail' && name !== 'detail' && history.state && history.state.detail) { ignoreNextPop = true; history.back(); }
     }
+    if (name === 'detail' && prev !== 'detail') { openDetail(prev); return; }
+    if (prev === 'detail' && name !== 'detail') { closeDetail(name, viaDrag); return; }
+    endMorph();
     renderScreen(name);
-    var anim = '';
-    if (name === 'detail' && prev !== 'detail') anim = 'anim-push';
-    else if (prev === 'detail' && name !== 'detail') anim = (fromHistory || instant) ? 'instant' : 'anim-pop';
-    showScreenEl(name, anim);
+    showScreenEl(name);
   }
 
   function leaveDetail() { goToScreen(state.lastTab || 'home'); }
@@ -804,35 +810,206 @@
     if (state.screen === 'detail') goToScreen(state.lastTab || 'home', null, true);
   });
 
+  // ---------- habit card ⇄ habit screen ----------
+  // Opening a habit grows its card (or row) into the habit screen; going back shrinks the
+  // screen into that same spot, like opening and closing an app on the iPhone home screen.
+  // One spring drives it, so an edge swipe can hold it and a change of mind can turn it around.
+
+  var morph = null;
+  var tabScroll = {};
+
+  function morphSourceEl(tab, habitId) {
+    var host = $(SCREEN_IDS[tab]);
+    if (!host || !habitId) return null;
+    var nodes = host.querySelectorAll('[data-morph-id]');
+    for (var i = 0; i < nodes.length; i++) if (nodes[i].dataset.morphId === habitId) return nodes[i];
+    return null;
+  }
+
+  function openDetail(fromTab) {
+    endMorph();
+    var detail = $('detailScreen');
+    tabScroll[fromTab] = window.scrollY;
+    appEl.classList.remove('entering');
+    detail.querySelector('.topbar').classList.remove('is-compact');
+    if (reducedMotion()) {
+      setActiveScreen('detail');
+      renderDetail(state.currentHabitId, { enter: true });
+      setChrome('detail');
+      window.scrollTo(0, 0);
+      updateCompactBars();
+      return;
+    }
+    // On stage before it's drawn, so the tally can measure the room it has.
+    detail.classList.add('is-morph');
+    renderDetail(state.currentHabitId, { enter: true });
+    setChrome('detail');
+    startMorph({ tab: fromTab, from: 0, to: 1, detailScroll: 0 });
+  }
+
+  function closeDetail(name, viaDrag) {
+    if (morph && viaDrag) {
+      setChrome(name);
+      morph.to = 0;
+      runMorph();
+      return;
+    }
+    if (morph && morph.to === 1 && morph.tab === name && !morph.dragging) {
+      // Changed your mind while it was still opening: the same spring heads back.
+      setChrome(name);
+      morph.to = 0;
+      return;
+    }
+    endMorph();
+    var detailScroll = window.scrollY;
+    appEl.classList.remove('entering');
+    renderScreen(name);
+    setChrome(name);
+    if (reducedMotion()) {
+      setActiveScreen(name);
+      window.scrollTo(0, tabScroll[name] || 0);
+      updateCompactBars();
+      return;
+    }
+    startMorph({ tab: name, from: 1, to: 0, detailScroll: detailScroll });
+  }
+
+  function startMorph(o) {
+    var detail = $('detailScreen');
+    var under = $(SCREEN_IDS[o.tab]);
+    var W = document.documentElement.clientWidth;
+    var H = window.innerHeight;
+    var m = morph = { tab: o.tab, under: under, detail: detail, shell: detail.querySelector('.shell'), W: W, H: H, p: o.from, v: 0, to: o.to, ox: 0, oy: 0, detailScroll: o.detailScroll || 0, dragging: !!o.dragging, raf: 0, last: 0 };
+
+    // The tab's screen sits in the page at the spot you left it; the habit screen floats above.
+    appEl.classList.add('is-morphing');
+    setActiveScreen(o.tab);
+    detail.classList.add('is-morph');
+    detail.style.height = H + 'px';
+    window.scrollTo(0, tabScroll[o.tab] || 0);
+    detail.scrollTop = m.detailScroll;
+
+    var src = morphSourceEl(o.tab, state.currentHabitId);
+    var r = src ? src.getBoundingClientRect() : null;
+    if (r && o.from === 1 && (r.top < 64 || r.bottom > H - 96)) {
+      // Heading back to a card that has slipped out of view: bring it back first.
+      window.scrollTo(0, Math.max(0, window.scrollY + r.top - Math.max(96, (H - r.height) / 2)));
+      r = src.getBoundingClientRect();
+    }
+    if (r && r.width > 0 && r.bottom > 0 && r.top < H) {
+      var radius = parseFloat(getComputedStyle(src).borderTopLeftRadius) || 14;
+      m.rect = { left: r.left, top: r.top, width: r.width, height: r.height, radius: radius };
+      var clone = el('div', 'morph-clone' + (src.dataset.morphCtx ? ' ' + src.dataset.morphCtx : ''));
+      var copy = src.cloneNode(true);
+      copy.removeAttribute('style');
+      copy.removeAttribute('data-morph-id');
+      copy.removeAttribute('tabindex');
+      clone.appendChild(copy);
+      clone.style.width = r.width + 'px';
+      clone.style.height = r.height + 'px';
+      clone.style.top = m.detailScroll + 'px';
+      clone.style.borderRadius = radius + 'px';
+      clone.style.transform = 'scale(' + (W / r.width) + ')';
+      detail.appendChild(clone);
+      m.clone = clone;
+      m.src = src;
+      src.style.visibility = 'hidden';
+    } else {
+      // Nothing to grow from or land on (the habit was just deleted, say): a soft zoom and fade.
+      m.rect = { left: W * 0.05, top: H * 0.06, width: W * 0.9, height: H * 0.9, radius: 28 };
+      m.fade = true;
+    }
+    m.scrim = el('div', 'morph-scrim');
+    document.body.appendChild(m.scrim);
+    under.style.transformOrigin = '50% ' + (window.scrollY + H / 2 - under.offsetTop) + 'px';
+    paintMorph(m);
+    if (!m.dragging) runMorph();
+  }
+
+  // p runs from 0 (the card) to 1 (the full screen). The habit screen keeps its proportions:
+  // it scales with the width and is cropped to the height, so nothing ever looks squashed.
+  function paintMorph(m) {
+    var p = m.p, pc = clamp01(p), r = m.rect;
+    var w = Math.max(40, r.width + (m.W - r.width) * p);
+    var h = Math.max(40, r.height + (m.H - r.height) * p);
+    var x = r.left * (1 - p) + m.ox;
+    var y = r.top * (1 - p) + m.oy;
+    var s = w / m.W;
+    var radius = (r.radius * (1 - pc) + 130 * pc * (1 - pc)) / s;
+    var cut = Math.max(0, m.H - h / s);
+    var clip = 'inset(0px 0px ' + cut.toFixed(2) + 'px 0px round ' + radius.toFixed(2) + 'px)';
+    m.detail.style.transform = 'translate3d(' + x.toFixed(2) + 'px,' + y.toFixed(2) + 'px,0) scale(' + s.toFixed(5) + ')';
+    m.detail.style.webkitClipPath = clip;
+    m.detail.style.clipPath = clip;
+    // The card's face fades out before the habit screen fades in, so the two never ghost over each other.
+    if (m.clone) {
+      m.clone.style.opacity = clamp01(1 - p / 0.26).toFixed(3);
+      m.shell.style.opacity = clamp01((p - 0.12) / 0.34).toFixed(3);
+    }
+    if (m.fade) m.detail.style.opacity = clamp01(p * 1.5).toFixed(3);
+    m.scrim.style.opacity = (0.3 * pc).toFixed(3);
+    m.under.style.transform = 'scale(' + (1 - 0.055 * pc).toFixed(5) + ')';
+  }
+
+  function runMorph() {
+    if (!morph || morph.raf) return;
+    morph.last = 0;
+    morph.raf = requestAnimationFrame(stepMorph);
+  }
+
+  function stepMorph(now) {
+    var m = morph;
+    if (!m) return;
+    m.raf = 0;
+    var dt = m.last ? Math.min(0.034, (now - m.last) / 1000) : 1 / 60;
+    m.last = now;
+    // Opening settles without overshoot; closing is a touch looser so the card lands with a small give.
+    var k = m.to === 1 ? 300 : 250;
+    var c = m.to === 1 ? 31 : 26;
+    for (var t = 0; t < dt; t += 0.004) {
+      var step = Math.min(0.004, dt - t);
+      m.v += (-k * (m.p - m.to) - c * m.v) * step;
+      m.p += m.v * step;
+    }
+    var ease = Math.pow(0.002, dt / 0.32);
+    m.ox *= ease;
+    m.oy *= ease;
+    if (Math.abs(m.p - m.to) < 0.0015 && Math.abs(m.v) < 0.04) { endMorph(); return; }
+    paintMorph(m);
+    m.raf = requestAnimationFrame(stepMorph);
+  }
+
+  // Settle wherever the spring was heading and put the page back to normal.
+  function endMorph() {
+    var m = morph;
+    if (!m) return;
+    morph = null;
+    if (m.raf) cancelAnimationFrame(m.raf);
+    var opened = m.to === 1;
+    m.detail.classList.remove('is-morph');
+    m.detail.style.transform = m.detail.style.webkitClipPath = m.detail.style.clipPath = m.detail.style.height = m.detail.style.opacity = '';
+    m.under.style.transform = m.under.style.transformOrigin = m.shell.style.opacity = '';
+    if (m.clone) m.clone.remove();
+    if (m.src) m.src.style.visibility = '';
+    m.scrim.remove();
+    appEl.classList.remove('is-morphing');
+    setActiveScreen(opened ? 'detail' : m.tab);
+    if (opened) window.scrollTo(0, m.detailScroll);
+    updateCompactBars();
+  }
+
   // The installed home-screen app has no browser swipe-back, so drag from the left edge here.
-  // Like iOS, the previous screen is already drawn underneath and slides in with a slight parallax.
+  // The screen shrinks toward its card under your finger; let go and it lands there or springs back.
   function wireEdgeSwipe() {
-    if (!window.navigator.standalone) return;
     var screen = $('detailScreen');
-    var under = null;
     var tracking = false, locked = false, startX = 0, startY = 0, dx = 0, lastX = 0, lastT = 0, speed = 0;
 
-    function paint(p) {
-      screen.style.transform = 'translateX(' + (p * 100) + '%)';
-      under.style.transform = 'translateX(' + (-30 + 30 * p) + '%)';
-      under.style.setProperty('--shade', String(0.22 * (1 - p)));
-    }
-    function cleanup() {
-      screen.classList.remove('is-dragging', 'is-settling', 'is-leaving');
-      screen.style.transform = '';
-      if (under) {
-        under.classList.remove('is-under', 'is-settling', 'is-leaving');
-        under.style.transform = '';
-        under.style.removeProperty('--shade');
-      }
-      under = null;
-    }
-
     screen.addEventListener('touchstart', function (e) {
-      if (state.screen !== 'detail' || under || e.touches[0].clientX > 22) return;
+      if (!window.navigator.standalone || state.screen !== 'detail' || morph || e.touches.length !== 1 || e.touches[0].clientX > 24) return;
       tracking = true; locked = false; dx = 0; speed = 0;
       startX = lastX = e.touches[0].clientX; startY = e.touches[0].clientY; lastT = e.timeStamp;
     }, { passive: true });
+
     screen.addEventListener('touchmove', function (e) {
       if (!tracking) return;
       var x = e.touches[0].clientX;
@@ -840,36 +1017,41 @@
       if (!locked) {
         if (Math.abs(mx) < 6 && Math.abs(my) < 6) return;
         if (Math.abs(my) > Math.abs(mx)) { tracking = false; return; }
+        if (reducedMotion()) { tracking = false; leaveDetail(); return; }
         locked = true;
-        var target = state.lastTab || 'home';
-        renderScreen(target);
-        under = $(SCREEN_IDS[target]);
-        document.querySelector('.app').classList.add('instant');
-        under.classList.add('is-under');
-        screen.classList.add('is-dragging');
+        var tab = state.lastTab || 'home';
+        var detailScroll = window.scrollY;
+        appEl.classList.remove('entering');
+        renderScreen(tab);
+        startMorph({ tab: tab, from: 1, to: 1, detailScroll: detailScroll, dragging: true });
       }
       e.preventDefault();
+      var m = morph;
+      if (!m) return;
       if (e.timeStamp > lastT) speed = (x - lastX) / (e.timeStamp - lastT);
       lastX = x; lastT = e.timeStamp;
       dx = Math.max(0, mx);
-      paint(Math.min(1, dx / screen.offsetWidth));
+      m.p = 1 - Math.min(0.74, dx / m.W * 0.92);
+      m.ox = dx * 0.2;
+      m.oy = my * 0.16;
+      paintMorph(m);
     }, { passive: false });
 
-    function end() {
+    function end(e) {
       if (!tracking) return;
       tracking = false;
-      if (!locked) return;
-      var commit = dx > screen.offsetWidth * 0.35 || (speed > 0.45 && dx > 30);
-      screen.classList.remove('is-dragging');
-      screen.classList.add(commit ? 'is-leaving' : 'is-settling');
-      under.classList.add(commit ? 'is-leaving' : 'is-settling');
-      paint(commit ? 1 : 0);
-      setTimeout(function () {
-        var target = state.lastTab || 'home';
-        cleanup();
-        if (commit) goToScreen(target, null, false, true);
-        else document.querySelector('.app').classList.remove('instant');
-      }, 260);
+      var m = morph;
+      if (!locked || !m) return;
+      // A finger that stopped before lifting isn't a flick.
+      if (e.timeStamp - lastT > 90) speed = 0;
+      m.dragging = false;
+      m.v = -speed * 1000 / m.W * 0.92;
+      if (dx > m.W * 0.3 || (speed > 0.45 && dx > 30)) {
+        goToScreen(state.lastTab || 'home', null, false, true);
+      } else {
+        m.to = 1;
+        runMorph();
+      }
     }
     screen.addEventListener('touchend', end);
     screen.addEventListener('touchcancel', end);
@@ -879,6 +1061,7 @@
   var compactQueued = false;
   function updateCompactBars() {
     compactQueued = false;
+    if (morph) return;
     var screenEl = $(SCREEN_IDS[state.screen]);
     var bar = screenEl && screenEl.querySelector('.topbar');
     var threshold = state.screen === 'detail' ? 150 : 12;
@@ -1018,11 +1201,13 @@
 
   var DETAIL_TABS = ['calendar', 'milestones', 'history'];
 
-  function showDetailTab(name) {
+  function showDetailTab(name, animate) {
     state.detailTab = name;
     setSeg($('detailTabs'), DETAIL_TABS.indexOf(name));
     document.querySelectorAll('#detailScreen .detail-pane').forEach(function (p) {
-      p.classList.toggle('hidden', p.dataset.pane !== name);
+      var on = p.dataset.pane === name;
+      p.classList.toggle('hidden', !on);
+      p.classList.toggle('pane-in', on && !!animate);
     });
   }
 
@@ -1183,7 +1368,7 @@
       b.node.style.transition = 'none';
       b.node.style.transform = 'translate(' + dx + 'px,' + dy + 'px)';
       void b.node.offsetWidth;
-      b.node.style.transition = 'transform 240ms cubic-bezier(0.2, 0.9, 0.25, 1)';
+      b.node.style.transition = 'transform var(--t-snappy) var(--spring-snappy)';
       b.node.style.transform = '';
     });
   }
@@ -1477,6 +1662,8 @@
 
   function buildHabitCard(habit, index) {
     var card = el('article', 'habit-card');
+    card.dataset.morphId = habit.id;
+    if (data.viewMode === 'grid') card.dataset.morphCtx = 'grid-mode';
     card.setAttribute('role', 'button');
     card.tabIndex = 0;
     card.setAttribute('aria-label', habit.name + ', ' + currentStreak(habit) + ' day streak');
@@ -1601,6 +1788,82 @@
 
   // ---------- detail ----------
 
+  // ---------- the streak, drawn ----------
+  // One bundle per five days (four strokes and a slash), stacking from the bottom up.
+  // Bundles shrink as the stack grows, so any streak fits the same space.
+
+  var TALLY_SIZES = [[44, 10], [34, 8], [27, 6], [22, 5], [18, 4], [15, 3], [12, 3], [10, 2], [8, 2], [6.5, 1.5]];
+  var TALLY_W = 38, TALLY_H = 34;
+
+  // The five strokes of a bundle whose top-left corner is at x, y.
+  function tallyStroke(i, x, y) {
+    if (i === 4) return 'M' + (x + 3).toFixed(1) + ' ' + (y + 25).toFixed(1) + 'l32 -16';
+    return 'M' + (x + 7 + i * 8).toFixed(1) + ' ' + (y + 3).toFixed(1) + 'v28';
+  }
+
+  function tallyLayout(marks, width, maxH, sizes) {
+    sizes = sizes || TALLY_SIZES;
+    var total = Math.max(1, Math.ceil(marks / 5));
+    var fit = null;
+    for (var i = 0; i < sizes.length; i++) {
+      var b = sizes[i][0], g = sizes[i][1];
+      var bh = b * TALLY_H / TALLY_W;
+      var cols = Math.max(1, Math.floor((width + g) / (b + g)));
+      var rows = Math.ceil(total / cols);
+      fit = { b: b, bh: bh, g: g, cols: cols, rows: rows, first: 0, total: total };
+      if (rows * (bh + g) - g <= maxH) return fit;
+    }
+    // More than even the smallest size can hold: keep the newest rows.
+    var maxRows = Math.max(1, Math.floor((maxH + fit.g) / (fit.bh + fit.g)));
+    fit.first = (fit.rows - maxRows) * fit.cols;
+    fit.rows = maxRows;
+    return fit;
+  }
+
+  function tallyStrokeWidth(b) { return b >= 26 ? 4 : b >= 17 ? 4.6 : b >= 11 ? 5.4 : 6.4; }
+
+  // o.ghost: today is still open, so the next mark shows as a dashed outline.
+  // o.from: the count before this change; marks past it draw themselves in.
+  function drawTally(host, count, o) {
+    o = o || {};
+    var width = host.clientWidth || Math.min(560, window.innerWidth) - 72;
+    var lay = tallyLayout(count + (o.ghost ? 1 : 0), width, o.maxH || 128);
+    var gu = lay.g / lay.b * TALLY_W;
+    var vbW = lay.cols * TALLY_W + (lay.cols - 1) * gu;
+    var vbH = lay.rows * TALLY_H + (lay.rows - 1) * gu;
+    var shown = lay.total - lay.first;
+    var newFrom = typeof o.from === 'number' && count > o.from ? Math.max(o.from, count - 10) : count;
+    var step = Math.min(46, 460 / shown);
+    var out = '<svg class="tally-stack' + (shown > 60 ? ' is-many' : '') + '" viewBox="0 0 ' + vbW.toFixed(1) + ' ' + vbH.toFixed(1) + '"' +
+      ' width="' + (lay.cols * (lay.b + lay.g) - lay.g).toFixed(1) + '" height="' + (lay.rows * (lay.bh + lay.g) - lay.g).toFixed(1) + '"' +
+      ' style="--sw:' + tallyStrokeWidth(lay.b) + '">' +
+      '<defs><linearGradient id="tallyGrad" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="' + (vbW * 0.3).toFixed(1) + '" y2="' + vbH.toFixed(1) + '">' +
+      '<stop offset="0" class="bg-top"/><stop offset="0.5" class="bg-mid"/><stop offset="1" class="bg-end"/></linearGradient></defs>';
+    for (var i = lay.first; i < lay.total; i++) {
+      var slot = i - lay.first;
+      var x = (slot % lay.cols) * (TALLY_W + gu);
+      var y = (lay.rows - 1 - Math.floor(slot / lay.cols)) * (TALLY_H + gu);
+      var marks = '';
+      var pop = false;
+      for (var s = 0; s < 5; s++) {
+        var idx = i * 5 + s;
+        var cls;
+        if (idx < count) {
+          cls = 'tk' + (s === 4 ? ' tk-slash' : '');
+          if (idx >= newFrom) { cls += ' is-new'; if (s === 4) pop = true; }
+        } else if (o.ghost && (count === 0 || idx === count)) {
+          cls = 'tk-ghost';
+        } else {
+          continue;
+        }
+        marks += '<path class="' + cls + '"' + (idx >= newFrom && idx < count ? ' style="--n:' + (idx - newFrom) + '"' : '') + ' d="' + tallyStroke(s, x, y) + '"/>';
+      }
+      out += '<g class="tb' + (pop ? ' is-pop' : '') + '" style="--d:' + Math.round(140 + slot * step) + 'ms">' + marks + '</g>';
+    }
+    host.innerHTML = out + '</svg>';
+    host.classList.toggle('is-entering', !!o.enter);
+  }
+
   var detailRefs = null;
 
   function renderDetail(habitId, opts) {
@@ -1616,8 +1879,10 @@
     $('detailName').textContent = habit.name;
 
     var cur = currentStreak(habit);
+    var done = isDoneToday(habit);
+    var before = detailRefs && detailRefs.habitId === habitId && !opts.enter ? detailRefs.streak : null;
     var streakNumEl = $('detailStreakNum');
-    if (streakNumEl.textContent !== String(cur) && opts.animate) {
+    if (streakNumEl.textContent !== String(cur) && before !== null) {
       streakNumEl.textContent = String(cur);
       streakNumEl.classList.remove('num-pop');
       void streakNumEl.offsetWidth;
@@ -1627,6 +1892,7 @@
     }
     streakNumEl.classList.toggle('is-zero', cur === 0);
     $('detailStreakUnit').textContent = 'day streak';
+    drawTally($('detailTally'), cur, { ghost: !done, from: before, enter: !!opts.enter });
 
     var rest = isRestToday(habit);
     var since = $('detailSince');
@@ -1654,11 +1920,10 @@
     $('detailRate').textContent = stats30.rate === null ? '–' : stats30.rate + '%';
 
     var markBtn = $('markDoneBtn');
-    var done = isDoneToday(habit);
     $('markDoneLabel').textContent = done ? 'Done today' : (rest ? 'Log it anyway' : 'Mark done today');
     markBtn.classList.toggle('is-done', done);
 
-    detailRefs = { habitId: habitId };
+    detailRefs = { habitId: habitId, streak: cur };
 
     renderMilestones(habit, cur);
     renderCalendar(habit);
@@ -1751,6 +2016,9 @@
 
     var grid = $('calGrid');
     grid.innerHTML = '';
+    // The cells only ripple in when you page to another month.
+    grid.classList.toggle('is-fresh', !!state.calFresh);
+    state.calFresh = false;
     var firstDayOfWeek = new Date(year, month, 1).getDay();
     var daysInMonth = new Date(year, month + 1, 0).getDate();
     var createdDate = startOfDay(new Date(habit.createdAt));
@@ -1922,61 +2190,11 @@
 
     var range = data.insightsRange;
     setSeg($('insightsRangeSeg'), range === 'month' ? 1 : 0);
-    renderRecap(habits, range);
-    renderTrend(habits, range);
+    renderPulse(habits, range);
+    renderYear(habits);
     renderWeekdayChart(habits);
     renderStreakBoard(habits);
     renderInsightTotals(habits);
-  }
-
-  function renderRecap(habits, range) {
-    var today = startOfDay(new Date());
-    var curStart, prevStart, prevEnd, label, prevLabel;
-    if (range === 'month') {
-      curStart = monthStartOf(today);
-      prevStart = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-      prevEnd = addDays(curStart, -1);
-      label = 'This month'; prevLabel = 'last month';
-    } else {
-      curStart = weekStartOf(today);
-      prevStart = addDays(curStart, -7);
-      prevEnd = addDays(curStart, -1);
-      label = 'This week'; prevLabel = 'last week';
-    }
-    var cur = rangeStats(habits, curStart, today);
-    var prev = rangeStats(habits, prevStart, prevEnd);
-
-    var host = $('recapCard');
-    host.innerHTML = '';
-    var mark = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    mark.setAttribute('class', 'recap-mark');
-    mark.setAttribute('viewBox', '0 0 48 48');
-    mark.innerHTML = TALLY_PATHS;
-    host.appendChild(mark);
-    host.appendChild(el('div', 'eyebrow', label));
-
-    var num = el('div', 'recap-num');
-    if (cur.scheduled === 0) {
-      num.appendChild(document.createTextNode('–'));
-    } else {
-      num.appendChild(document.createTextNode(cur.done + ' of ' + cur.scheduled));
-      num.appendChild(el('small', '', 'done'));
-    }
-    host.appendChild(num);
-
-    var text = el('p', 'recap-text');
-    if (cur.scheduled === 0) {
-      text.textContent = range === 'month' ? 'Nothing logged yet this month. The first mark starts the count.' : 'Nothing logged yet this week. The first mark starts the count.';
-    } else {
-      var html = "You’ve kept <b>" + cur.rate + '%</b> of scheduled habits ' + (range === 'month' ? 'this month' : 'this week');
-      if (prev.rate === null) html += '. There’s no ' + prevLabel + ' to compare yet, so this is the baseline.';
-      else if (cur.rate > prev.rate) html += ', up from <b>' + prev.rate + '%</b> ' + prevLabel + '.';
-      else if (cur.rate < prev.rate) html += ', down from <b>' + prev.rate + '%</b> ' + prevLabel + '. Still time to close the gap.';
-      else html += ', level with ' + prevLabel + '.';
-      if (cur.rate === 100 && cur.scheduled >= 3) html += ' Not a single miss.';
-      text.innerHTML = html;
-    }
-    host.appendChild(text);
   }
 
   function trendBuckets(habits, range) {
@@ -1988,7 +2206,7 @@
         var e = new Date(s.getFullYear(), s.getMonth() + 1, 0);
         var st = rangeStats(habits, s, e);
         buckets.push({ start: s, end: e, stats: st, label: s.toLocaleDateString(undefined, { month: 'short' }), current: m === 0,
-          caption: s.toLocaleDateString(undefined, { month: 'long' }) });
+          caption: m === 0 ? 'This month' : s.toLocaleDateString(undefined, { month: 'long' }) });
       }
     } else {
       var thisWeek = weekStartOf(today);
@@ -2003,82 +2221,287 @@
     return buckets;
   }
 
-  // Hand-rolled column chart. Single hue (flame); the current period is the
-  // saturated bar, history is a lighter step of the same hue. Bars are
-  // capped at 24 units wide, rounded only at the data end.
-  function barChartSVG(items, opts) {
-    var W = 320, H = opts.height || 120, padB = 18, padT = 14;
-    var n = items.length;
-    var slot = W / n;
-    var bw = Math.min(24, slot * 0.62);
-    var plotH = H - padB - padT;
-    var out = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' + (opts.aria || 'Chart') + '">';
-    [0, 50, 100].forEach(function (g) {
-      var y = padT + plotH - plotH * g / 100;
-      out += '<line class="grid" x1="0" x2="' + W + '" y1="' + y.toFixed(1) + '" y2="' + y.toFixed(1) + '"/>';
-    });
-    items.forEach(function (it, i) {
-      var x = slot * i + (slot - bw) / 2;
-      var base = padT + plotH;
-      var v = it.value;
-      var cls = 'bar' + (it.current ? ' is-current' : '') + (it.selected ? ' is-selected' : '');
-      if (v === null || v === 0) {
-        out += '<rect class="bar is-empty" x="' + x.toFixed(1) + '" y="' + (base - 2) + '" width="' + bw.toFixed(1) + '" height="2" style="--i:' + i + '"/>';
-      } else {
-        var h = Math.max(3, plotH * v / 100);
-        var r = Math.min(4, bw / 2, h);
-        var y = base - h;
-        var d = 'M' + x.toFixed(1) + ',' + base + ' L' + x.toFixed(1) + ',' + (y + r).toFixed(1) +
-          ' Q' + x.toFixed(1) + ',' + y.toFixed(1) + ' ' + (x + r).toFixed(1) + ',' + y.toFixed(1) +
-          ' L' + (x + bw - r).toFixed(1) + ',' + y.toFixed(1) +
-          ' Q' + (x + bw).toFixed(1) + ',' + y.toFixed(1) + ' ' + (x + bw).toFixed(1) + ',' + (y + r).toFixed(1) +
-          ' L' + (x + bw).toFixed(1) + ',' + base + ' Z';
-        out += '<path class="' + cls + '" d="' + d + '" style="--i:' + i + '"/>';
-      }
-      if (it.valueLabel && v !== null) {
-        var ly = base - Math.max(3, plotH * v / 100) - 5;
-        out += '<text class="value-label' + (it.softLabel ? ' is-soft' : '') + '" x="' + (x + bw / 2).toFixed(1) + '" y="' + ly.toFixed(1) + '" text-anchor="middle">' + v + '%</text>';
-      }
-      if (it.label) {
-        out += '<text class="axis-label' + (it.current ? ' is-strong' : '') + '" x="' + (x + bw / 2).toFixed(1) + '" y="' + (H - 4) + '" text-anchor="middle">' + it.label + '</text>';
-      }
-      out += '<rect class="bar-hit" data-i="' + i + '" x="' + (slot * i).toFixed(1) + '" y="0" width="' + slot.toFixed(1) + '" height="' + H + '"/>';
-    });
-    out += '</svg>';
-    return out;
+  // A curve through the points that never overshoots them (monotone cubic), as an SVG path.
+  function smoothPath(pts) {
+    var n = pts.length;
+    if (!n) return '';
+    function f(v) { return v.toFixed(1); }
+    var d = 'M' + f(pts[0].x) + ' ' + f(pts[0].y);
+    if (n === 1) return d;
+    var dx = [], slope = [], tan = [], i;
+    for (i = 0; i < n - 1; i++) {
+      dx[i] = pts[i + 1].x - pts[i].x;
+      slope[i] = (pts[i + 1].y - pts[i].y) / dx[i];
+    }
+    tan[0] = slope[0];
+    tan[n - 1] = slope[n - 2];
+    for (i = 1; i < n - 1; i++) tan[i] = slope[i - 1] * slope[i] <= 0 ? 0 : (slope[i - 1] + slope[i]) / 2;
+    for (i = 0; i < n - 1; i++) {
+      if (slope[i] === 0) { tan[i] = tan[i + 1] = 0; continue; }
+      var a = tan[i] / slope[i], b = tan[i + 1] / slope[i], h = a * a + b * b;
+      if (h > 9) { var t = 3 / Math.sqrt(h); tan[i] = t * a * slope[i]; tan[i + 1] = t * b * slope[i]; }
+    }
+    for (i = 0; i < n - 1; i++) {
+      d += 'C' + f(pts[i].x + dx[i] / 3) + ' ' + f(pts[i].y + tan[i] * dx[i] / 3) + ' ' +
+        f(pts[i + 1].x - dx[i] / 3) + ' ' + f(pts[i + 1].y - tan[i + 1] * dx[i] / 3) + ' ' + f(pts[i + 1].x) + ' ' + f(pts[i + 1].y);
+    }
+    return d;
   }
 
-  function renderTrend(habits, range) {
+  // The flame card: this week or month as one number, on top of the trend it belongs to.
+  // Touch the curve to read any other week or month.
+  var pulse = null;
+  var PULSE_W = 320, PULSE_H = 92, PULSE_TOP = 12, PULSE_BOTTOM = 84, PULSE_PAD = 7;
+
+  function renderPulse(habits, range) {
     var buckets = trendBuckets(habits, range);
-    $('trendTitle').textContent = range === 'month' ? 'Completion, last 6 months' : 'Completion, last 12 weeks';
-    var sel = state.trendSelected;
-    var items = buckets.map(function (b, i) {
-      var showLabel = range === 'month' || i === 0 || i === buckets.length - 1 || i === 4 || i === 8;
-      return {
-        value: b.stats.rate,
-        current: b.current,
-        selected: i === sel,
-        label: showLabel ? (b.current && range === 'week' ? 'Now' : b.label) : '',
-        valueLabel: b.current || i === sel,
-        softLabel: !b.current
-      };
+    var last = buckets.length - 1;
+    var host = $('recapCard');
+    host.innerHTML = '';
+
+    var mark = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    mark.setAttribute('class', 'recap-mark');
+    mark.setAttribute('viewBox', '0 0 48 48');
+    mark.innerHTML = TALLY_PATHS;
+    host.appendChild(mark);
+
+    var head = el('div', 'pulse-head');
+    var eyebrow = el('div', 'eyebrow');
+    var delta = el('span', 'pulse-delta');
+    head.appendChild(eyebrow);
+    head.appendChild(delta);
+    host.appendChild(head);
+
+    var figure = el('div', 'recap-num');
+    var rate = el('span', 'pulse-rate');
+    var count = el('small');
+    figure.appendChild(rate);
+    figure.appendChild(count);
+    host.appendChild(figure);
+
+    var step = (PULSE_W - PULSE_PAD * 2) / last;
+    var pts = [];
+    buckets.forEach(function (b, i) {
+      if (b.stats.rate === null) return;
+      pts.push({ i: i, x: PULSE_PAD + step * i, y: PULSE_BOTTOM - (PULSE_BOTTOM - PULSE_TOP) * b.stats.rate / 100 });
     });
-    var host = $('trendChart');
-    host.innerHTML = barChartSVG(items, { height: 130, aria: 'Completion rate by ' + (range === 'month' ? 'month' : 'week') });
-    var cap = $('trendCaption');
-    if (sel >= 0 && buckets[sel]) {
-      var b = buckets[sel];
-      cap.innerHTML = '<b>' + b.caption + '</b> · ' + (b.stats.scheduled ? b.stats.done + ' of ' + b.stats.scheduled + ' done (' + b.stats.rate + '%)' : 'nothing scheduled');
-    } else {
-      cap.textContent = useTip('insights-bars') ? 'Tap a bar for the numbers.' : '';
+    var line = smoothPath(pts);
+    var svg = '<svg viewBox="0 0 ' + PULSE_W + ' ' + PULSE_H + '" role="img" aria-label="Completion by ' + (range === 'month' ? 'month' : 'week') + '">' +
+      '<defs><linearGradient id="pulseFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity="0.34"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient></defs>';
+    [0, 50, 100].forEach(function (g) {
+      var gy = PULSE_BOTTOM - (PULSE_BOTTOM - PULSE_TOP) * g / 100;
+      svg += '<line class="pulse-grid" x1="0" x2="' + PULSE_W + '" y1="' + gy + '" y2="' + gy + '"/>';
+    });
+    if (pts.length > 1) {
+      svg += '<path class="pulse-area" d="' + line + 'L' + pts[pts.length - 1].x.toFixed(1) + ' ' + PULSE_BOTTOM + 'L' + pts[0].x.toFixed(1) + ' ' + PULSE_BOTTOM + 'Z"/>' +
+        '<path class="pulse-line" d="' + line + '"/>';
     }
-    host.querySelectorAll('.bar-hit').forEach(function (hit) {
-      hit.addEventListener('click', function () {
-        var i = parseInt(hit.dataset.i, 10);
-        state.trendSelected = state.trendSelected === i ? -1 : i;
-        renderTrend(habits, range);
-      });
+    svg += '<line class="pulse-guide" y1="2" y2="' + PULSE_BOTTOM + '"/><circle class="pulse-halo" r="9"/><circle class="pulse-dot" r="4.5"/></svg>';
+    var chart = el('div', 'pulse-chart');
+    chart.innerHTML = svg;
+    host.appendChild(chart);
+    var linePath = chart.querySelector('.pulse-line');
+    if (linePath && linePath.getTotalLength) linePath.style.setProperty('--len', String(Math.ceil(linePath.getTotalLength()) + 2));
+
+    var axis = el('div', 'pulse-axis');
+    buckets.forEach(function (b, i) {
+      if (range === 'week' && i % 4 !== 0 && i !== last) return;
+      if (range === 'week' && i === 8) return;
+      var tick = el('span', i === last ? 'is-now' : '', b.current && range === 'week' ? 'Now' : b.label);
+      tick.style.left = ((PULSE_PAD + step * i) / PULSE_W * 100) + '%';
+      if (i === 0) tick.classList.add('is-first');
+      axis.appendChild(tick);
     });
+    host.appendChild(axis);
+    if (useTip('insights-bars')) host.appendChild(el('p', 'pulse-tip', 'Touch the chart to read any ' + (range === 'month' ? 'month' : 'week') + '.'));
+
+    pulse = { buckets: buckets, pts: pts, sel: last, last: last, step: step,
+      eyebrow: eyebrow, delta: delta, rate: rate, count: count, chart: chart,
+      guide: chart.querySelector('.pulse-guide'), dot: chart.querySelector('.pulse-dot'), halo: chart.querySelector('.pulse-halo') };
+    paintPulse();
+
+    var held = false;
+    function pick(e) {
+      var box = chart.getBoundingClientRect();
+      var i = Math.round(((e.clientX - box.left) / box.width * PULSE_W - PULSE_PAD) / step);
+      i = Math.max(0, Math.min(last, i));
+      if (i !== pulse.sel) { pulse.sel = i; paintPulse(); }
+    }
+    chart.addEventListener('pointerdown', function (e) {
+      held = true;
+      try { chart.setPointerCapture(e.pointerId); } catch (err) {}
+      chart.classList.add('is-held');
+      pick(e);
+    });
+    chart.addEventListener('pointermove', function (e) { if (held) pick(e); });
+    function release() { held = false; chart.classList.remove('is-held'); }
+    chart.addEventListener('pointerup', release);
+    chart.addEventListener('pointercancel', release);
+  }
+
+  function paintPulse() {
+    var p = pulse;
+    var b = p.buckets[p.sel];
+    var prev = p.sel > 0 ? p.buckets[p.sel - 1] : null;
+    p.eyebrow.textContent = b.caption;
+    p.rate.textContent = b.stats.rate === null ? '–' : b.stats.rate + '%';
+    p.count.textContent = b.stats.scheduled ? b.stats.done + ' of ' + b.stats.scheduled : '';
+    var diff = b.stats.rate !== null && prev && prev.stats.rate !== null ? b.stats.rate - prev.stats.rate : null;
+    p.delta.className = 'pulse-delta' + (diff === null ? ' hidden' : diff < 0 ? ' is-down' : diff === 0 ? ' is-flat' : '');
+    if (diff !== null) {
+      p.delta.innerHTML = diff === 0 ? '<svg viewBox="0 0 24 24"><path d="M6 12h12"/></svg>' : '<svg viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"/></svg>';
+      p.delta.appendChild(document.createTextNode(String(Math.abs(diff))));
+      p.delta.setAttribute('aria-label', diff === 0 ? 'Level with the one before' : (diff > 0 ? 'Up ' : 'Down ') + Math.abs(diff) + ' points');
+    }
+    var pt = null;
+    p.pts.forEach(function (q) { if (q.i === p.sel) pt = q; });
+    var x = PULSE_PAD + p.step * p.sel;
+    p.guide.setAttribute('x1', x); p.guide.setAttribute('x2', x);
+    p.guide.style.opacity = p.sel === p.last ? 0 : 1;
+    [p.dot, p.halo].forEach(function (c) {
+      c.style.display = pt ? '' : 'none';
+      if (pt) { c.setAttribute('cx', pt.x); c.setAttribute('cy', pt.y); }
+    });
+  }
+
+  // ---------- the year, a square for every day ----------
+  // Twelve rows, one per month. A day fills in when it's done; with every habit showing,
+  // it fills deeper the more of that day's habits were done.
+
+  var YEAR_CELL = 10, YEAR_PAD = 13;
+  var MONTH_INITIALS = ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'];
+  var yearView = { year: null, habitId: null, sel: null };
+
+  function yearBounds() {
+    var now = new Date().getFullYear();
+    var first = now;
+    activeHabits().forEach(function (h) {
+      first = Math.min(first, new Date(h.createdAt).getFullYear());
+      h.completedDates.forEach(function (k) { var y = parseInt(k, 10); if (y && y < first) first = y; });
+    });
+    return { first: first, last: now };
+  }
+
+  function yearDay(list, sets, floors, date, key, today, todayK) {
+    var done = 0, due = 0, live = 0, off = isTimeOff(key);
+    for (var i = 0; i < list.length; i++) {
+      if (date >= floors[i]) live++;
+      if (sets[i][key]) { done++; due++; }
+      else if (date >= floors[i] && date <= today && !isFlexible(list[i]) && key !== todayK && isRequired(list[i], date, key)) due++;
+    }
+    return { done: done, due: due, off: off, live: live };
+  }
+
+  function renderYear(habits) {
+    var bounds = yearBounds();
+    if (yearView.habitId && !habits.some(function (h) { return h.id === yearView.habitId; })) yearView.habitId = null;
+    var year = Math.max(bounds.first, Math.min(bounds.last, yearView.year || bounds.last));
+    yearView.year = year === bounds.last ? null : year;
+    var list = yearView.habitId ? [findHabit(yearView.habitId)] : habits;
+    var sets = list.map(doneSet);
+    var floors = list.map(function (h) { return startOfDay(new Date(h.createdAt)); });
+    var today = startOfDay(new Date());
+    var todayK = todayKey();
+
+    $('yearLabel').textContent = String(year);
+    $('yearPrevBtn').disabled = year <= bounds.first;
+    $('yearNextBtn').disabled = year >= bounds.last;
+    document.querySelector('.year-nav').classList.toggle('is-single', bounds.first === bounds.last);
+
+    var filter = $('yearFilter');
+    filter.innerHTML = '';
+    filter.classList.toggle('hidden', habits.length < 2);
+    [null].concat(habits).forEach(function (h) {
+      var opt = el('button', 'yf-opt' + ((h ? h.id : null) === yearView.habitId ? ' is-active' : ''));
+      opt.type = 'button';
+      opt.setAttribute('role', 'radio');
+      opt.setAttribute('aria-checked', (h ? h.id : null) === yearView.habitId ? 'true' : 'false');
+      opt.setAttribute('aria-label', h ? h.name : 'All habits');
+      if (!h) opt.innerHTML = '<svg viewBox="0 0 48 48" class="yf-all">' + TALLY_PATHS + '</svg>';
+      else if (iconMarkup(h.icon)) opt.innerHTML = iconMarkup(h.icon);
+      else opt.textContent = (h.name || '?').trim().charAt(0).toUpperCase();
+      opt.addEventListener('click', function () {
+        if (yearView.habitId === (h ? h.id : null)) return;
+        yearView.habitId = h ? h.id : null;
+        yearView.sel = null;
+        renderYear(activeHabits());
+      });
+      filter.appendChild(opt);
+    });
+    var active = filter.querySelector('.is-active');
+    if (active && filter.scrollWidth > filter.clientWidth) filter.scrollLeft = active.offsetLeft - filter.clientWidth / 2 + active.offsetWidth / 2;
+
+    var days = 0;
+    var cells = {};
+    var out = '<svg viewBox="0 0 ' + (YEAR_PAD + 31 * YEAR_CELL) + ' ' + (12 * YEAR_CELL) + '" role="img" aria-label="Every day of ' + year + '">';
+    for (var m = 0; m < 12; m++) {
+      out += '<g class="yr-row" style="--i:' + m + '"><text class="yr-label" x="0" y="' + (m * YEAR_CELL + 7.4) + '">' + MONTH_INITIALS[m] + '</text>';
+      var dim = new Date(year, m + 1, 0).getDate();
+      for (var d = 1; d <= dim; d++) {
+        var date = new Date(year, m, d);
+        var key = dateKey(date);
+        var info = yearDay(list, sets, floors, date, key, today, todayK);
+        var cls = 'yc';
+        if (date > today) cls += ' is-future';
+        else if (info.done) {
+          days++;
+          var ratio = info.done / Math.max(1, info.due);
+          cls += ' l' + (yearView.habitId || ratio >= 1 ? 4 : ratio > 0.66 ? 3 : ratio > 0.33 ? 2 : 1);
+        } else if (info.due) cls += ' is-miss';
+        if (key === todayK) cls += ' is-today';
+        cells[key] = info;
+        out += '<rect class="' + cls + '" x="' + (YEAR_PAD + (d - 1) * YEAR_CELL + 0.8) + '" y="' + (m * YEAR_CELL + 0.8) + '" width="8.4" height="8.4" rx="2.4"/>';
+      }
+      out += '</g>';
+    }
+    out += '<rect class="yr-sel" width="10" height="10" rx="3.2"/></svg>';
+    var grid = $('yearGrid');
+    grid.innerHTML = out;
+    $('yearNote').textContent = plural(days, 'day');
+
+    var selBox = grid.querySelector('.yr-sel');
+    var caption = $('yearCaption');
+    function paintSel() {
+      var sel = yearView.sel;
+      var info = sel ? cells[sel] : null;
+      selBox.style.display = info ? '' : 'none';
+      if (!info) { caption.textContent = yearView.habitId ? list[0].name : 'All habits'; return; }
+      var date = parseDateKey(sel);
+      selBox.setAttribute('x', YEAR_PAD + (date.getDate() - 1) * YEAR_CELL);
+      selBox.setAttribute('y', date.getMonth() * YEAR_CELL);
+      var what;
+      if (date > today || (!info.live && !info.done)) what = '';
+      else if (yearView.habitId) what = info.done ? 'Done' : info.off ? 'Time off' : info.due ? 'Missed' : sel === todayK ? '' : 'Rest day';
+      else what = info.due ? info.done + ' of ' + info.due : info.off ? 'Time off' : sel === todayK ? '' : 'Rest day';
+      caption.innerHTML = '';
+      caption.appendChild(el('b', '', date.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })));
+      if (what) caption.appendChild(document.createTextNode(' · ' + what));
+    }
+    paintSel();
+
+    var svgEl = grid.firstChild;
+    var held = false;
+    function pick(e) {
+      var box = svgEl.getBoundingClientRect();
+      var scale = (YEAR_PAD + 31 * YEAR_CELL) / box.width;
+      var col = Math.floor(((e.clientX - box.left) * scale - YEAR_PAD) / YEAR_CELL);
+      var row = Math.floor((e.clientY - box.top) * scale / YEAR_CELL);
+      if (row < 0 || row > 11 || col < 0) return;
+      col = Math.min(col, new Date(year, row + 1, 0).getDate() - 1);
+      var key = dateKey(new Date(year, row, col + 1));
+      if (key !== yearView.sel) { yearView.sel = key; paintSel(); }
+    }
+    svgEl.addEventListener('pointerdown', function (e) { held = true; pick(e); });
+    svgEl.addEventListener('pointermove', function (e) { if (held) pick(e); });
+    svgEl.addEventListener('pointerup', function () { held = false; });
+    svgEl.addEventListener('pointercancel', function () { held = false; });
+    svgEl.addEventListener('pointerleave', function () { held = false; });
+  }
+
+  function shiftYear(delta) {
+    yearView.year = (yearView.year || new Date().getFullYear()) + delta;
+    yearView.sel = null;
+    renderYear(activeHabits());
   }
 
   function renderWeekdayChart(habits) {
@@ -2100,21 +2523,29 @@
       }
     });
     var rates = counts.map(function (c, i) { return c ? Math.round(dones[i] / c * 100) : null; });
-    var bestIdx = -1, worstIdx = -1;
+    var bestIdx = -1;
+    rates.forEach(function (r, i) { if (r !== null && (bestIdx === -1 || r > rates[bestIdx])) bestIdx = i; });
+    var host = $('weekdayChart');
+    host.innerHTML = '';
+    var fills = [];
     rates.forEach(function (r, i) {
-      if (r === null) return;
-      if (bestIdx === -1 || r > rates[bestIdx]) bestIdx = i;
-      if (worstIdx === -1 || r < rates[worstIdx]) worstIdx = i;
+      var col = el('div', 'wd-col' + (i === bestIdx ? ' is-best' : '') + (r === null ? ' is-empty' : ''));
+      col.setAttribute('role', 'img');
+      col.setAttribute('aria-label', DAY_NAMES[i] + (r === null ? '' : ', ' + r + '%'));
+      col.appendChild(el('span', 'wd-val', r === null ? '' : String(r)));
+      var track = el('div', 'wd-track');
+      var fill = el('i');
+      fill.style.setProperty('--i', String(i));
+      track.appendChild(fill);
+      col.appendChild(track);
+      col.appendChild(el('span', 'wd-day', DAY_LABELS[i]));
+      host.appendChild(col);
+      fills.push({ node: fill, h: r === null ? 0 : Math.max(8, r) });
     });
-    var items = rates.map(function (r, i) {
-      return { value: r, current: i === bestIdx, label: DAY_LABELS[i], valueLabel: i === bestIdx || i === worstIdx, softLabel: i !== bestIdx };
-    });
-    $('weekdayChart').innerHTML = barChartSVG(items, { height: 110, aria: 'Completion rate by weekday' });
-    var cap = $('weekdayCaption');
-    var sampled = counts.filter(function (c) { return c > 0; }).length;
-    if (bestIdx === -1) cap.textContent = 'Not enough days yet to see a pattern.';
-    else if (sampled < 3 || bestIdx === worstIdx || rates[bestIdx] === rates[worstIdx]) cap.innerHTML = 'Steady across the week so far. A few more weeks will sharpen this.';
-    else cap.innerHTML = 'Strongest on <b>' + DAY_NAMES_PLURAL[bestIdx] + '</b>, softest on <b>' + DAY_NAMES_PLURAL[worstIdx] + '</b>. Worth knowing before you plan.';
+    // Two frames, so the bars grow from the floor instead of appearing full.
+    requestAnimationFrame(function () { requestAnimationFrame(function () {
+      fills.forEach(function (f) { f.node.style.height = f.h + '%'; });
+    }); });
   }
 
   function renderStreakBoard(habits) {
@@ -2123,13 +2554,18 @@
     var rows = habits.map(function (h) { return { habit: h, cur: currentStreak(h), best: bestStreak(h) }; });
     rows.sort(function (a, b) { return b.cur - a.cur || b.best - a.best; });
     var max = rows.reduce(function (m, r) { return Math.max(m, r.cur); }, 0) || 1;
-    rows.forEach(function (r) {
+    var fills = [];
+    rows.forEach(function (r, i) {
       var row = el('div', 'sb-row');
+      row.dataset.morphId = r.habit.id;
+      row.setAttribute('role', 'button');
+      row.tabIndex = 0;
       row.appendChild(makeIconEl(r.habit, 'row-icon'));
-      var mid = el('div');
+      var mid = el('div', 'sb-mid');
       mid.appendChild(el('div', 'sb-name', r.habit.name));
       var bar = el('div', 'sb-bar' + (r.cur === 0 ? ' is-zero' : ''));
       var fill = el('i');
+      fill.style.setProperty('--i', String(i));
       bar.appendChild(fill);
       mid.appendChild(bar);
       row.appendChild(mid);
@@ -2138,29 +2574,34 @@
       num.appendChild(el('small', '', 'best ' + r.best));
       row.appendChild(num);
       row.addEventListener('click', function () { goToScreen('detail', r.habit.id); });
+      row.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goToScreen('detail', r.habit.id); }
+      });
       host.appendChild(row);
-      requestAnimationFrame(function () { fill.style.width = (r.cur === 0 ? 2 : Math.max(4, Math.round(r.cur / max * 100))) + '%'; });
+      fills.push({ node: fill, w: r.cur === 0 ? 2 : Math.max(4, Math.round(r.cur / max * 100)) });
     });
+    requestAnimationFrame(function () { requestAnimationFrame(function () {
+      fills.forEach(function (f) { f.node.style.width = f.w + '%'; });
+    }); });
   }
 
   function renderInsightTotals(habits) {
     var host = $('insightsTotals');
     host.innerHTML = '';
     var totalLogged = data.habits.reduce(function (n, h) { return n + h.completedDates.length; }, 0);
-    var longest = { days: 0, name: '' };
-    data.habits.forEach(function (h) { var b = bestStreak(h); if (b > longest.days) longest = { days: b, name: h.name }; });
+    var longest = 0;
+    data.habits.forEach(function (h) { longest = Math.max(longest, bestStreak(h)); });
     var oldest = data.habits.reduce(function (m, h) { return Math.min(m, h.createdAt); }, Date.now());
     var daysTracking = Math.max(1, Math.round((startOfDay(new Date()) - startOfDay(new Date(oldest))) / 86400000) + 1);
-    function stat(num, label, sub) {
+    function stat(num, label) {
       var s = el('div', 'stat');
       s.appendChild(el('div', 'stat-num', String(num)));
       s.appendChild(el('div', 'stat-label', label));
-      if (sub) s.appendChild(el('div', 'stat-sub', sub));
       return s;
     }
-    host.appendChild(stat(totalLogged, 'Days logged', 'all habits'));
-    host.appendChild(stat(longest.days, 'Longest ever', longest.name || '—'));
-    host.appendChild(stat(daysTracking, 'Days stacking', 'since ' + formatDateNoYear(new Date(oldest))));
+    host.appendChild(stat(totalLogged, 'Days logged'));
+    host.appendChild(stat(longest, 'Longest ever'));
+    host.appendChild(stat(daysTracking, 'Days stacking'));
   }
 
   // ---------- settings ----------
@@ -2175,6 +2616,8 @@
     }
     list.forEach(function (habit) {
       var row = el('div', 'row row-clickable');
+      row.dataset.morphId = habit.id;
+      row.dataset.morphCtx = 'card-flush';
       var main = el('div', 'row-main');
       main.appendChild(makeIconEl(habit, 'row-icon'));
       var txt = el('div', 'row-text');
@@ -2235,6 +2678,8 @@
     if (node.classList.contains('hidden')) return;
     node.classList.remove('is-open');
     openSheets = openSheets.filter(function (s) { return s !== id; });
+    // A milestone that was waiting behind the streak card gets its turn now.
+    if (id === 'cardSheet' && milestoneHeld) { milestoneHeld = false; setTimeout(maybeShowMilestone, 520); }
     var done = false;
     function finish() {
       if (done) return;
@@ -2389,12 +2834,16 @@
   }
 
   // ---------- shareable streak card ----------
+  // A 4:5 poster: the streak as a stack of tally bundles over one very large number.
+
+  var CARD_W = 1080, CARD_H = 1350;
+  var CARD_TALLY_SIZES = [[190, 44], [150, 34], [120, 27], [96, 22], [78, 18], [62, 14], [50, 12], [40, 9], [32, 7], [26, 6], [21, 5], [17, 4]];
 
   function loadIconImage(habit) {
     return new Promise(function (resolve) {
       var inner = ICON_SVGS[habit.icon];
       if (!inner) { resolve(null); return; }
-      var svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="240" height="240" fill="none" stroke="#FFFFFF" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">' + inner.replace(/currentColor/g, '#FFFFFF') + '</svg>';
+      var svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="240" height="240" fill="none" stroke="#FFFFFF" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">' + inner.replace(/currentColor/g, '#FFFFFF') + '</svg>';
       var img = new Image();
       var timer = setTimeout(function () { resolve(null); }, 1500);
       img.onload = function () { clearTimeout(timer); resolve(img); };
@@ -2403,91 +2852,171 @@
     });
   }
 
-  function drawTally(ctx, x, y, scale, alpha) {
-    ctx.save();
-    ctx.globalAlpha = alpha;
-    ctx.translate(x, y);
-    ctx.scale(scale, scale);
-    ctx.strokeStyle = '#FFFFFF';
-    ctx.lineWidth = 4.5;
+  function cardRoundRect(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  // One tally bundle on the canvas; scale 1 is the 38 x 34 cell the app draws with.
+  function cardBundle(ctx, x, y, scale, marks, lineWidth) {
+    ctx.lineWidth = lineWidth * scale;
     ctx.lineCap = 'round';
-    [12, 20, 28, 36].forEach(function (px) {
-      ctx.beginPath(); ctx.moveTo(px, 10); ctx.lineTo(px, 38); ctx.stroke();
-    });
-    ctx.beginPath(); ctx.moveTo(8, 32); ctx.lineTo(40, 16); ctx.stroke();
+    for (var i = 0; i < marks; i++) {
+      ctx.beginPath();
+      if (i === 4) { ctx.moveTo(x + 3 * scale, y + 25 * scale); ctx.lineTo(x + 35 * scale, y + 9 * scale); }
+      else { ctx.moveTo(x + (7 + i * 8) * scale, y + 3 * scale); ctx.lineTo(x + (7 + i * 8) * scale, y + 31 * scale); }
+      ctx.stroke();
+    }
+  }
+
+  // The same stack the habit screen shows, bottom-aligned inside the given box.
+  function cardTallyStack(ctx, count, x, bottom, width, maxH) {
+    var lay = tallyLayout(count, width, maxH, CARD_TALLY_SIZES);
+    var scale = lay.b / TALLY_W;
+    var line = tallyStrokeWidth(lay.b / 3.4);
+    ctx.save();
+    ctx.strokeStyle = '#FFFFFF';
+    if (count === 0) {
+      ctx.globalAlpha = 0.34;
+      ctx.setLineDash([line * scale * 1.5, line * scale * 1.9]);
+      cardBundle(ctx, x, bottom - lay.bh, scale, 5, line * 0.7);
+      ctx.restore();
+      return;
+    }
+    ctx.shadowColor = 'rgba(96, 22, 4, 0.28)';
+    ctx.shadowBlur = 18;
+    ctx.shadowOffsetY = 8;
+    for (var i = lay.first; i < lay.total; i++) {
+      var slot = i - lay.first;
+      var bx = x + (slot % lay.cols) * (lay.b + lay.g);
+      var by = bottom - lay.bh - Math.floor(slot / lay.cols) * (lay.bh + lay.g);
+      cardBundle(ctx, bx, by, scale, Math.min(5, count - i * 5), line);
+    }
     ctx.restore();
   }
 
   function drawStreakCard(habit) {
-    var size = 1080;
     var canvas = document.createElement('canvas');
-    canvas.width = size;
-    canvas.height = size;
+    canvas.width = CARD_W;
+    canvas.height = CARD_H;
     var ctx = canvas.getContext('2d');
+    var M = 88;
 
     return loadIconImage(habit).then(function (iconImg) {
-      // Background with a soft radial glow so it isn't a flat block.
-      ctx.fillStyle = '#D6451F';
-      ctx.fillRect(0, 0, size, size);
-      var glow = ctx.createRadialGradient(size * 0.8, size * 0.15, 40, size * 0.8, size * 0.15, 700);
-      glow.addColorStop(0, 'rgba(255,255,255,0.16)');
-      glow.addColorStop(1, 'rgba(255,255,255,0)');
+      var cur = currentStreak(habit);
+      var best = bestStreak(habit);
+
+      // Flame, lit from the top left and burning down to ember.
+      var bg = ctx.createLinearGradient(0, 0, CARD_W * 0.55, CARD_H);
+      bg.addColorStop(0, '#F67B43');
+      bg.addColorStop(0.42, '#D6451F');
+      bg.addColorStop(1, '#8A220D');
+      ctx.fillStyle = bg;
+      ctx.fillRect(0, 0, CARD_W, CARD_H);
+      var glow = ctx.createRadialGradient(CARD_W * 0.86, CARD_H * 0.1, 20, CARD_W * 0.86, CARD_H * 0.1, 780);
+      glow.addColorStop(0, 'rgba(255, 214, 170, 0.5)');
+      glow.addColorStop(1, 'rgba(255, 214, 170, 0)');
       ctx.fillStyle = glow;
-      ctx.fillRect(0, 0, size, size);
+      ctx.fillRect(0, 0, CARD_W, CARD_H);
+      var ember = ctx.createRadialGradient(CARD_W * 0.08, CARD_H * 1.02, 20, CARD_W * 0.08, CARD_H * 1.02, 820);
+      ember.addColorStop(0, 'rgba(70, 12, 0, 0.5)');
+      ember.addColorStop(1, 'rgba(70, 12, 0, 0)');
+      ctx.fillStyle = ember;
+      ctx.fillRect(0, 0, CARD_W, CARD_H);
 
-      // Watermark tally, bottom-right.
-      drawTally(ctx, 690, 640, 9, 0.10);
-
-      // Wordmark row.
-      drawTally(ctx, 88, 78, 1.9, 1);
-      ctx.fillStyle = '#FFFFFF';
-      ctx.textAlign = 'left';
-      ctx.textBaseline = 'alphabetic';
-      ctx.font = '700 40px ' + CARD_FONT;
-      ctx.fillText('Stack it', 190, 137);
-
-      // Icon badge.
-      var cy = 330;
-      ctx.beginPath();
-      ctx.arc(size / 2, cy, 88, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(255,255,255,0.16)';
-      ctx.fill();
-      if (iconImg) {
-        ctx.drawImage(iconImg, size / 2 - 52, cy - 52, 104, 104);
-      } else {
-        ctx.fillStyle = '#FFFFFF';
-        ctx.textAlign = 'center';
-        ctx.font = '700 84px ' + CARD_FONT;
-        ctx.fillText((habit.name || '?').trim().charAt(0).toUpperCase(), size / 2, cy + 30);
+      // Fine grain, so the gradient reads as print and not as a screen.
+      var seed = 7;
+      for (var g = 0; g < 26000; g++) {
+        seed = (seed * 16807) % 2147483647;
+        var gx = seed % CARD_W;
+        seed = (seed * 16807) % 2147483647;
+        var gy = seed % CARD_H;
+        ctx.fillStyle = g % 2 ? 'rgba(255,255,255,0.035)' : 'rgba(40,8,0,0.04)';
+        ctx.fillRect(gx, gy, 2, 2);
       }
 
-      // Habit name.
+      // A thin glass frame.
+      cardRoundRect(ctx, 30, 30, CARD_W - 60, CARD_H - 60, 56);
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // Wordmark and date.
+      ctx.strokeStyle = '#FFFFFF';
+      cardBundle(ctx, M - 6, 92, 1.75, 5, 4.4);
       ctx.fillStyle = '#FFFFFF';
-      ctx.textAlign = 'center';
-      ctx.font = '600 46px ' + CARD_FONT;
+      ctx.textBaseline = 'alphabetic';
+      ctx.textAlign = 'left';
+      ctx.font = '700 38px ' + CARD_FONT;
+      ctx.fillText('Stack it', M + 76, 136);
+      ctx.textAlign = 'right';
+      ctx.font = '500 32px ' + CARD_FONT;
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.78)';
+      ctx.fillText(formatDateShort(todayKey()), CARD_W - M, 136);
+
+      // Icon tile and name.
+      var tile = 124, ty = 232;
+      cardRoundRect(ctx, M, ty, tile, tile, 36);
+      var tileFill = ctx.createLinearGradient(0, ty, 0, ty + tile);
+      tileFill.addColorStop(0, 'rgba(255, 255, 255, 0.3)');
+      tileFill.addColorStop(1, 'rgba(255, 255, 255, 0.12)');
+      ctx.fillStyle = tileFill;
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.fillStyle = '#FFFFFF';
+      if (iconImg) {
+        ctx.drawImage(iconImg, M + (tile - 72) / 2, ty + (tile - 72) / 2, 72, 72);
+      } else {
+        ctx.textAlign = 'center';
+        ctx.font = '700 64px ' + CARD_FONT;
+        ctx.fillText((habit.name || '?').trim().charAt(0).toUpperCase(), M + tile / 2, ty + tile / 2 + 23);
+      }
+      ctx.textAlign = 'left';
+      var nameSize = 62;
+      var nameMax = CARD_W - M * 2 - tile - 32;
       var name = habit.name;
-      while (ctx.measureText(name).width > 900 && name.length > 3) name = name.slice(0, -2);
-      if (name !== habit.name) name = name.trim() + '…';
-      ctx.fillText(name, size / 2, 490);
+      ctx.font = '700 ' + nameSize + 'px ' + CARD_FONT;
+      while (ctx.measureText(name).width > nameMax && nameSize > 42) { nameSize -= 2; ctx.font = '700 ' + nameSize + 'px ' + CARD_FONT; }
+      while (ctx.measureText(name).width > nameMax && name.length > 3) name = name.slice(0, -2).trim() + '…';
+      ctx.fillText(name, M + tile + 32, ty + tile / 2 + nameSize * 0.34);
 
-      // The number.
-      var cur = currentStreak(habit);
+      // The streak, drawn.
+      cardTallyStack(ctx, cur, M, 808, CARD_W - M * 2, 372);
+
+      // The streak, counted.
       var numText = String(cur);
-      var numSize = 320;
-      if (numText.length >= 4) numSize = 220;
-      else if (numText.length === 3) numSize = 270;
-      ctx.font = '700 ' + numSize + 'px ' + CARD_FONT;
-      ctx.fillText(numText, size / 2, 780);
+      var numSize = numText.length >= 4 ? 250 : numText.length === 3 ? 300 : 330;
+      ctx.font = '800 ' + numSize + 'px ' + CARD_FONT;
+      var numFill = ctx.createLinearGradient(0, 1110 - numSize * 0.74, 0, 1110);
+      numFill.addColorStop(0, '#FFFFFF');
+      numFill.addColorStop(1, '#FFE0CF');
+      ctx.save();
+      ctx.shadowColor = 'rgba(90, 20, 4, 0.35)';
+      ctx.shadowBlur = 40;
+      ctx.shadowOffsetY = 16;
+      ctx.fillStyle = numFill;
+      ctx.fillText(numText, M - 10, 1110);
+      ctx.restore();
+      var numWidth = ctx.measureText(numText).width;
+      ctx.font = '600 50px ' + CARD_FONT;
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.92)';
+      ctx.fillText('day streak', M + numWidth + 18, 1108);
 
-      ctx.font = '500 44px ' + CARD_FONT;
-      ctx.fillStyle = 'rgba(255,255,255,0.92)';
-      ctx.fillText(cur === 1 ? 'day streak' : 'day streak', size / 2, 850);
-
-      // Footer line.
-      ctx.font = '500 30px ' + CARD_FONT;
-      ctx.fillStyle = '#FBDCCE';
-      var footer = cur > 0 ? 'Since ' + formatDateShort(currentStreakStartKey(habit)) + '  ·  Best ' + bestStreak(habit) + ' days' : 'Best ' + bestStreak(habit) + ' days  ·  ' + formatDateShort(todayKey());
-      ctx.fillText(footer, size / 2, 980);
+      // Footer.
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.28)';
+      ctx.fillRect(M, 1176, CARD_W - M * 2, 2);
+      ctx.font = '500 34px ' + CARD_FONT;
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+      ctx.fillText(cur > 0 ? 'Since ' + formatDateShort(currentStreakStartKey(habit)) : 'Day one is waiting', M, 1250);
+      ctx.textAlign = 'right';
+      ctx.fillText('Best ' + best, CARD_W - M, 1250);
 
       return canvas;
     });
@@ -2626,7 +3155,7 @@
     habitMilestones(habit).forEach(function (m) {
       if (cur >= m.days && habit.milestonesHit.indexOf(m.key) === -1) {
         habit.milestonesHit.push(m.key);
-        state.milestoneQueue.push({ habitName: habit.name, title: m.title, days: m.days, custom: !!m.custom });
+        state.milestoneQueue.push({ habitId: habit.id, habitName: habit.name, title: m.title, days: m.days, custom: !!m.custom, key: m.key });
       }
     });
     if (state.milestoneQueue.length) {
@@ -2636,31 +3165,153 @@
     }
   }
 
+  // Every milestone gets its own scene: two weeks counts its tally marks, a month sweeps
+  // a dial of thirty days, half a year is a sun halfway up, a year is the whole sun.
+  function milestoneScene(m) {
+    if (m.custom) return 'target';
+    if (m.key === '2w') return 'tally';
+    var months = parseInt(m.key, 10) || 1;
+    if (months % 12 === 0) return 'year';
+    if (months % 12 === 6) return 'sunrise';
+    if (months <= 3) return ['dial', 'stack', 'rings'][months - 1];
+    return ['burst', 'dial', 'stack', 'rings'][months % 4];
+  }
+
+  function msPoint(r, deg) {
+    var a = (deg - 90) * Math.PI / 180;
+    return (120 + r * Math.cos(a)).toFixed(1) + ' ' + (120 + r * Math.sin(a)).toFixed(1);
+  }
+
+  function msRay(r1, r2, deg, cls, n) {
+    return '<path class="' + cls + '" style="--n:' + n + '" d="M' + msPoint(r1, deg) + 'L' + msPoint(r2, deg) + '"/>';
+  }
+
+  function msBundle(x, y, scale, marks, order, cls) {
+    var out = '<g transform="translate(' + x + ' ' + y + ') scale(' + scale + ')"><g class="' + cls + (marks === 5 ? ' is-full' : '') + '" style="--n:' + order + '">';
+    for (var s = 0; s < marks; s++) out += '<path class="ms-tk" style="--n:' + (order + s) + '" d="' + tallyStroke(s, 0, 0) + '"/>';
+    return out + '</g></g>';
+  }
+
+  var MILESTONE_ART = {
+    // Fourteen marks, struck one at a time.
+    tally: function () {
+      return msBundle(29, 152, 1.35, 5, 0, 'ms-tb') + msBundle(94.5, 152, 1.35, 5, 5, 'ms-tb') + msBundle(160, 152, 1.35, 4, 10, 'ms-tb');
+    },
+    // Thirty ticks light up around the count.
+    dial: function () {
+      var out = '';
+      for (var i = 0; i < 30; i++) out += msRay(90, 106, i * 12, 'ms-tick', i);
+      return out + '<circle class="ms-pulse" cx="120" cy="120" r="98"/>';
+    },
+    // Twelve bundles drop into a pile.
+    stack: function () {
+      var out = '', order = 0;
+      [[5, 32.5, 198], [4, 50.5, 166], [3, 68.5, 134]].forEach(function (row) {
+        for (var i = 0; i < row[0]; i++) out += msBundle(row[1] + i * 36, row[2], 0.82, 5, order++, 'ms-drop');
+      });
+      return out;
+    },
+    // One ring closes for each month.
+    rings: function () {
+      var out = '';
+      [106, 91, 76].forEach(function (r, i) {
+        out += '<circle class="ms-track" cx="120" cy="120" r="' + r + '"/>' +
+          '<circle class="ms-arc" style="--n:' + i + ';--len:' + (2 * Math.PI * r).toFixed(1) + '" cx="120" cy="120" r="' + r + '" transform="rotate(-90 120 120)"/>';
+      });
+      return out;
+    },
+    // Sparks shoot out and hang there.
+    burst: function () {
+      var out = '';
+      for (var i = 0; i < 16; i++) out += msRay(68, 110, i * 22.5, 'ms-spark', 0);
+      for (var j = 0; j < 16; j++) out += msRay(84, 102, j * 22.5 + 11.25, 'ms-spark is-late', 1);
+      return out;
+    },
+    // Half a year: the sun is halfway up.
+    sunrise: function () {
+      var out = '<defs><clipPath id="msSky"><rect x="0" y="0" width="240" height="150"/></clipPath></defs>' +
+        '<g clip-path="url(#msSky)"><g class="ms-sun"><circle cx="120" cy="150" r="62"/></g></g>' +
+        '<path class="ms-horizon" d="M22 150H218"/>';
+      for (var i = 0; i < 9; i++) {
+        var deg = -80 + i * 20;
+        var a = (deg - 90) * Math.PI / 180;
+        var r2 = i % 2 ? 90 : 100;
+        out += '<path class="ms-beam" style="--n:' + i + '" d="M' + (120 + 74 * Math.cos(a)).toFixed(1) + ' ' + (150 + 74 * Math.sin(a)).toFixed(1) +
+          'L' + (120 + r2 * Math.cos(a)).toFixed(1) + ' ' + (150 + r2 * Math.sin(a)).toFixed(1) + '"/>';
+      }
+      return out;
+    },
+    // A year: the whole sun, turning slowly, with embers rising.
+    year: function () {
+      var out = '<circle class="ms-arc" style="--n:0;--len:414.7" cx="120" cy="120" r="66" transform="rotate(-90 120 120)"/><g class="ms-turn">';
+      for (var i = 0; i < 24; i++) out += msRay(78, i % 2 ? 94 : 108, i * 15, 'ms-beam', i);
+      out += '</g><g class="ms-embers">';
+      [[40, 0], [72, 5], [104, 2], [150, 6], [182, 1], [206, 4], [58, 7], [166, 3]].forEach(function (e) {
+        out += '<circle style="--n:' + e[1] + '" cx="' + e[0] + '" cy="232" r="' + (e[1] % 2 ? 2.2 : 3) + '"/>';
+      });
+      return out + '</g>';
+    },
+    // Your own target: the rings close in and a flag goes up.
+    target: function () {
+      return '<circle class="ms-zoom" style="--n:0" cx="120" cy="120" r="106"/><circle class="ms-zoom" style="--n:1" cx="120" cy="120" r="84"/>' +
+        msRay(98, 114, 90, 'ms-beam', 2) + msRay(98, 114, 180, 'ms-beam', 3) + msRay(98, 114, 270, 'ms-beam', 4) +
+        '<path class="ms-pole" d="M120 30V3"/><path class="ms-flag" d="M120 4l19 6.5-19 6.5z"/>';
+    }
+  };
+
   var milestoneShowing = false;
+  var milestoneHeld = false;
+
+  function countUp(node, to, ms) {
+    if (reducedMotion() || to < 3) { node.textContent = String(to); return; }
+    var start = null;
+    node.textContent = '0';
+    function frame(now) {
+      if (start === null) start = now;
+      var t = Math.min(1, (now - start) / ms);
+      node.textContent = String(Math.round(to * (1 - Math.pow(1 - t, 3))));
+      if (t < 1 && milestoneShowing) requestAnimationFrame(frame);
+      else node.textContent = String(to);
+    }
+    setTimeout(function () { requestAnimationFrame(frame); }, 240);
+  }
 
   function maybeShowMilestone() {
-    if (milestoneShowing || state.milestoneQueue.length === 0) return;
+    if (milestoneShowing || milestoneHeld || state.milestoneQueue.length === 0) return;
     milestoneShowing = true;
     var next = state.milestoneQueue.shift();
+    var scene = milestoneScene(next);
+    var bd = $('milestoneBackdrop');
+    bd.dataset.scene = scene;
+    state.milestoneHabitId = next.habitId;
+    $('milestoneArt').innerHTML = '<svg viewBox="0 0 240 240">' + MILESTONE_ART[scene](next) + '</svg>';
+    $('milestoneUnit').textContent = next.days === 1 ? 'day' : 'days';
+    $('milestoneCount').classList.toggle('is-long', String(next.days).length > 3);
     $('milestoneHabitName').textContent = next.habitName;
     $('milestoneTitle').textContent = next.title;
-    $('milestoneSub').textContent = next.custom ? 'Your own target, reached. Set the next one.' : (MILESTONE_LINES[next.days] || 'Another month on the stack.');
-    var mark = document.querySelector('.milestone-mark');
-    mark.innerHTML = TALLY_PATHS;
-    var bd = $('milestoneBackdrop');
+    var line = next.custom ? 'Your own target, reached.' : (MILESTONE_LINES[next.days] || '');
+    $('milestoneSub').textContent = line;
+    $('milestoneSub').classList.toggle('hidden', !line);
+    $('milestoneShareBtn').classList.toggle('hidden', !findHabit(next.habitId));
     bd.classList.remove('hidden');
     void bd.offsetWidth;
     bd.classList.add('is-open');
+    countUp($('milestoneCount'), next.days, scene === 'tally' ? 900 : 1100);
   }
 
-  function closeMilestone() {
+  function closeMilestone(thenShare) {
     var bd = $('milestoneBackdrop');
+    if (!milestoneShowing || !bd.classList.contains('is-open')) return;
     bd.classList.remove('is-open');
+    var habitId = state.milestoneHabitId;
+    if (thenShare) milestoneHeld = true;
     setTimeout(function () {
       bd.classList.add('hidden');
+      $('milestoneArt').innerHTML = '';
       milestoneShowing = false;
-      if (state.milestoneQueue.length) setTimeout(maybeShowMilestone, 200);
-    }, 280);
+      if (thenShare) openStreakCard(habitId);
+      else if (state.milestoneQueue.length) setTimeout(maybeShowMilestone, 200);
+    }, 300);
   }
 
   // ---------- toast ----------
@@ -2907,6 +3558,7 @@
     $('viewToggleBtn').addEventListener('click', function () {
       data.viewMode = data.viewMode === 'grid' ? 'list' : 'grid';
       saveData();
+      appEl.classList.add('entering');
       renderHome();
     });
     $('themeSeg').querySelectorAll('.seg-opt').forEach(function (opt) {
@@ -2946,7 +3598,7 @@
     $('newMilestoneLabelInput').addEventListener('keydown', function (e) { if (e.key === 'Enter') addCustomMilestone(state.currentHabitId); });
     $('detailTabs').querySelectorAll('.seg-opt').forEach(function (opt) {
       opt.addEventListener('click', function () {
-        if (state.detailTab !== opt.dataset.tab) showDetailTab(opt.dataset.tab);
+        if (state.detailTab !== opt.dataset.tab) showDetailTab(opt.dataset.tab, true);
       });
     });
     $('historyToggleBtn').addEventListener('click', function () {
@@ -2955,10 +3607,12 @@
     });
     $('calPrevBtn').addEventListener('click', function () {
       state.calendarOffset -= 1;
+      state.calFresh = true;
       renderCalendar(findHabit(state.currentHabitId));
     });
     $('calNextBtn').addEventListener('click', function () {
       state.calendarOffset += 1;
+      state.calFresh = true;
       renderCalendar(findHabit(state.currentHabitId));
     });
     $('calGrid').addEventListener('click', function (e) {
@@ -3016,7 +3670,14 @@
       if (state.confirmCallback) state.confirmCallback();
     });
 
-    $('milestoneOkBtn').addEventListener('click', closeMilestone);
+    $('milestoneOkBtn').addEventListener('click', function () { closeMilestone(false); });
+    $('milestoneShareBtn').addEventListener('click', function () { closeMilestone(true); });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && milestoneShowing) closeMilestone(false); });
+    $('yearPrevBtn').addEventListener('click', function () { shiftYear(-1); });
+    $('yearNextBtn').addEventListener('click', function () { shiftYear(1); });
+    // A habit that is mid-flight when the window changes just lands.
+    window.addEventListener('resize', endMorph);
+    document.addEventListener('visibilitychange', function () { if (document.hidden) endMorph(); });
     wireSheetBackdrops();
   }
 
@@ -3025,6 +3686,8 @@
   // celebrating anything at launch. Celebrations only happen on a fresh mark.
   data.habits.forEach(resyncMilestonesHit);
   saveData();
+  // A reload while a habit was open leaves its history entry behind; start clean.
+  if (history.state && history.state.detail) { try { history.replaceState(null, ''); } catch (e) {} }
   goToScreen('home');
   setTimeout(function () { $('brandMark').classList.remove('is-intro'); }, 950);
   setTimeout(maybeNudgeBackup, 1600);
