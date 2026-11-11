@@ -2347,11 +2347,12 @@
     p.rate.textContent = b.stats.rate === null ? '–' : b.stats.rate + '%';
     p.count.textContent = b.stats.scheduled ? b.stats.done + ' of ' + b.stats.scheduled : '';
     var diff = b.stats.rate !== null && prev && prev.stats.rate !== null ? b.stats.rate - prev.stats.rate : null;
-    p.delta.className = 'pulse-delta' + (diff === null ? ' hidden' : diff < 0 ? ' is-down' : diff === 0 ? ' is-flat' : '');
-    if (diff !== null) {
-      p.delta.innerHTML = diff === 0 ? '<svg viewBox="0 0 24 24"><path d="M6 12h12"/></svg>' : '<svg viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"/></svg>';
+    // The chip only speaks up when something changed: an arrow and how many points.
+    p.delta.className = 'pulse-delta' + (!diff ? ' hidden' : diff < 0 ? ' is-down' : '');
+    if (diff) {
+      p.delta.innerHTML = '<svg viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"/></svg>';
       p.delta.appendChild(document.createTextNode(String(Math.abs(diff))));
-      p.delta.setAttribute('aria-label', diff === 0 ? 'Level with the one before' : (diff > 0 ? 'Up ' : 'Down ') + Math.abs(diff) + ' points');
+      p.delta.setAttribute('aria-label', (diff > 0 ? 'Up ' : 'Down ') + Math.abs(diff) + ' points');
     }
     var pt = null;
     p.pts.forEach(function (q) { if (q.i === p.sel) pt = q; });
